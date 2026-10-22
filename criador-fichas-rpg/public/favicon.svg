@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Protocolo Anômalo">
+  <rect width="64" height="64" fill="#000000" />
+  <path
+    d="M14 14h13.5a11 11 0 0 1 0 22H20v14h-6V14zm6 5v11h7.5a5.5 5.5 0 0 0 0-11H20z"
+    fill="#ffffff"
+  />
+  <path d="M36 50 43.5 14h7L58 50h-6.4l-1.6-8H44l-1.6 8H36zm9.6-14h5.4l-2.7-13-2.7 13z" fill="#ffffff" />
+  <rect y="57" width="64" height="7" fill="#000080" />
+</svg>
