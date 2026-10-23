@@ -1,6 +1,103 @@
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ModuleRules, WizardStepDefinition } from '../../types/character'
 import { StepIndicator } from '../wizard/StepIndicator'
+
+const GLITCH_TITLE = 'PROTOCOLO ANÔMALO'
+const NOISE_CHARS = [
+  '█',
+  '░',
+  '▒',
+  '▓',
+  'X',
+  'Ø',
+  '?',
+  '!',
+  '#',
+  '%',
+  '&',
+  '0',
+  '1',
+  'Δ',
+  '§',
+] as const
+
+/** Posições imutáveis: 'P' de PROTOCOLO, 'A' de ANÔMALO e o espaço separador. */
+const FIXED_POSITIONS = new Set([
+  0,
+  GLITCH_TITLE.indexOf(' '),
+  GLITCH_TITLE.indexOf('A'),
+])
+
+function pickNoiseChar(current: string): string {
+  const index = Math.floor(Math.random() * NOISE_CHARS.length)
+  const next = NOISE_CHARS[index]
+
+  if (next === current) {
+    return NOISE_CHARS[(index + 1) % NOISE_CHARS.length]
+  }
+
+  return next
+}
+
+function GlitchTitle() {
+  const [chars, setChars] = useState<string[]>(() => GLITCH_TITLE.split(''))
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return
+    }
+
+    const timers = new Set<number>()
+
+    // Cada posição mutável tem o seu próprio timer recursivo com delay
+    // sorteado a cada mutação, garantindo oscilação totalmente descoordenada.
+    const scheduleMutation = (position: number) => {
+      const delay = 40 + Math.random() * 200
+
+      const timer = window.setTimeout(() => {
+        timers.delete(timer)
+
+        setChars((previous) => {
+          const next = [...previous]
+          const revealOriginal = Math.random() < 0.3
+
+          next[position] = revealOriginal
+            ? GLITCH_TITLE[position]
+            : pickNoiseChar(next[position])
+
+          return next
+        })
+
+        scheduleMutation(position)
+      }, delay)
+
+      timers.add(timer)
+    }
+
+    GLITCH_TITLE.split('').forEach((_, position) => {
+      if (FIXED_POSITIONS.has(position)) {
+        return
+      }
+
+      scheduleMutation(position)
+    })
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+      timers.clear()
+    }
+  }, [])
+
+  return (
+    <h1
+      aria-label={GLITCH_TITLE}
+      className="whitespace-pre font-mono text-sm font-semibold uppercase tracking-[0.22em]"
+    >
+      <span aria-hidden="true">{chars.join('')}</span>
+    </h1>
+  )
+}
 
 interface LayoutProps {
   module: ModuleRules
@@ -25,9 +122,7 @@ export function Layout({ module, steps, stepIndex, children }: LayoutProps) {
               <p className="font-mono text-[9px] uppercase tracking-[0.32em] text-gray-500">
                 Gerador de fichas
               </p>
-              <h1 className="text-sm font-semibold uppercase tracking-[0.22em]">
-                Protocolo Anômalo
-              </h1>
+              <GlitchTitle />
             </div>
           </div>
 

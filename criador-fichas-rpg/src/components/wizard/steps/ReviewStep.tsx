@@ -77,6 +77,20 @@ export function ReviewStep() {
     URL.revokeObjectURL(url)
   }
 
+  const handlePrint = () => {
+    const previousTitle = document.title
+
+    // O cabeçalho de cada página impressa usa o <title>: limpar antes do
+    // disparo e restaurar logo depois mantém a aba intacta e o PDF limpo.
+    document.title = ''
+
+    try {
+      window.print()
+    } finally {
+      document.title = previousTitle
+    }
+  }
+
   const handleReset = () => {
     if (window.confirm('Descartar a ficha atual e iniciar uma nova?')) {
       resetDraft()
@@ -85,11 +99,13 @@ export function ReviewStep() {
 
   return (
     <section aria-labelledby="step-title">
-      <StepHeader
-        eyebrow={`${rules.name} · Etapa 0${stepIndex + 1}`}
-        title={step.title}
-        description={step.description}
-      />
+      <div className="no-print">
+        <StepHeader
+          eyebrow={`${rules.name} · Etapa 0${stepIndex + 1}`}
+          title={step.title}
+          description={step.description}
+        />
+      </div>
 
       <div className="panel p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -153,7 +169,7 @@ export function ReviewStep() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => window.print()}
+              onClick={handlePrint}
               icon={<Printer className="h-3.5 w-3.5" aria-hidden="true" />}
             >
               Imprimir
