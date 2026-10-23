@@ -1,6 +1,12 @@
-import { useState } from 'react'
-import { flushSync } from 'react-dom'
-import { ArrowLeft, Download, FileText, Printer, RotateCcw } from 'lucide-react'
+import { useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  Download,
+  FileDown,
+  FileText,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react'
 import { getModule } from '../../../config/modules'
 import {
   buildCharacterSheet,
@@ -13,6 +19,7 @@ import {
   getTotalSkillPool,
   getWizardSteps,
 } from '../../../lib/characterRules'
+import { exportSheetToPdf } from '../../../lib/exportPdf'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { Button } from '../../ui/Button'
 import { DerivedStatsPanel } from '../DerivedStatsPanel'
@@ -83,24 +90,51 @@ export function ReviewStep() {
     URL.revokeObjectURL(url)
   }
 
+  const sheetRef = useRef<HTMLDivElement>(null)
   const [printMode, setPrintMode] = useState<PrintMode>('filled')
+  const [pdfMode, setPdfMode] = useState<PrintMode | null>(null)
+  const isGeneratingPdf = pdfMode !== null
 
   /**
-   * Alterna o documento de impressão (ficha preenchida ou em branco), limpa o
-   * <title> para não carimbar o cabeçalho do PDF e restaura tudo ao final.
+   * Gera o PDF da ficha ativa (preenchida ou em branco) fora do ecrã, sem
+   * caixa de impressão. Em desktop/laptop transfere o ficheiro directamente;
+   * apenas em telemóvel abre o menu de partilha nativo (com fallback para
+   * download).
    */
-  const handlePrint = (mode: PrintMode) => {
-    const previousTitle = document.title
+  const handleDownloadPdf = async (mode: PrintMode) => {
+    const node = sheetRef.current
 
-    document.title = ''
+    if (!node || isGeneratingPdf) {
+      return
+    }
 
-    // flushSync garante que o layout de impressão já está montado no DOM.
-    flushSync(() => setPrintMode(mode))
+    setPdfMode(mode)
+    setPrintMode(mode)
+
+    // Duas frames garantem que o documento já está montado e medido no DOM.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve())
+      })
+    })
+
+    const isBlank = mode === 'blank'
+    const fileName = isBlank
+      ? `ficha-em-branco-${slugify(rules.name)}.pdf`
+      : `${slugify(sheet.name)}.pdf`
 
     try {
-      window.print()
+      await exportSheetToPdf(node, fileName, {
+        title: isBlank
+          ? 'Ficha em branco'
+          : sheet.name || 'Ficha de personagem',
+        subject: rules.name,
+      })
+    } catch (error) {
+      console.error('Falha ao gerar o PDF', error)
+      window.alert('Não foi possível gerar o PDF. Tente novamente.')
     } finally {
-      document.title = previousTitle
+      setPdfMode(null)
       setPrintMode('filled')
     }
   }
@@ -174,28 +208,57 @@ export function ReviewStep() {
             ) : null}
           </div>
 
-          <div className="no-print flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={handleExport}
-              icon={<Download className="h-3.5 w-3.5" aria-hidden="true" />}
-            >
-              Exportar JSON
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => handlePrint('filled')}
-              icon={<Printer className="h-3.5 w-3.5" aria-hidden="true" />}
-            >
-              Imprimir
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => handlePrint('blank')}
-              icon={<FileText className="h-3.5 w-3.5" aria-hidden="true" />}
-            >
-              Imprimir Ficha em Branco
-            </Button>
+          <div className="no-print flex flex-col gap-2 sm:items-end">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button
+                variant="primary"
+                onClick={() => handleDownloadPdf('filled')}
+                disabled={isGeneratingPdf}
+                title="Gera e transfere o PDF — no telemóvel abre a partilha nativa"
+                icon={
+                  pdfMode === 'filled' ? (
+                    <Loader2
+                      className="h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <FileDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  )
+                }
+              >
+                {pdfMode === 'filled' ? 'Gerando...' : 'Baixar PDF'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleExport}
+                disabled={isGeneratingPdf}
+                icon={<Download className="h-3.5 w-3.5" aria-hidden="true" />}
+              >
+                Exportar JSON
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handleDownloadPdf('blank')}
+                disabled={isGeneratingPdf}
+                title="Gera e transfere a ficha em branco em PDF"
+                icon={
+                  pdfMode === 'blank' ? (
+                    <Loader2
+                      className="h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                  )
+                }
+              >
+                {pdfMode === 'blank' ? 'Gerando...' : 'Baixar Ficha em Branco'}
+              </Button>
+            </div>
+            <p className="max-w-xs text-right font-mono text-[9px] uppercase leading-relaxed tracking-[0.12em] text-gray-400">
+              O PDF é gerado no dispositivo e transferido automaticamente — no
+              telemóvel abre o menu de partilha nativo.
+            </p>
           </div>
         </div>
       </div>
@@ -586,23 +649,67 @@ export function ReviewStep() {
         >
           Voltar
         </Button>
-        <Button
-          variant="ghost"
-          onClick={handleReset}
-          icon={<RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <Button
+            variant="primary"
+            onClick={() => handleDownloadPdf('filled')}
+            disabled={isGeneratingPdf}
+            title="Gera e transfere o PDF — no telemóvel abre a partilha nativa"
+            icon={
+              pdfMode === 'filled' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <FileDown className="h-3.5 w-3.5" aria-hidden="true" />
+              )
+            }
+          >
+            {pdfMode === 'filled' ? 'Gerando...' : 'Baixar PDF'}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={handleReset}
+            icon={<RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />}
+          >
+            Nova ficha
+          </Button>
+        </div>
+      </div>
+      </div>
+
+      {isGeneratingPdf ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center gap-3 bg-white"
         >
-          Nova ficha
-        </Button>
-      </div>
-      </div>
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em]">
+            Gerando PDF...
+          </span>
+        </div>
+      ) : null}
 
-      {/* Documentos de impressão: cada um ocupa exatamente 2 folhas A4. */}
-      <div className={printMode === 'blank' ? 'hidden' : ''}>
-        <FilledSheetPrint rules={rules} sheet={sheet} draft={draft} />
-      </div>
+      {/*
+        Documentos para PDF/impressão: cada um ocupa exatamente 2 folhas A4.
+        Ficam fora da área dos botões e só são visíveis durante a captura
+        (html2canvas), atrás do indicador de geração.
+      */}
+      <div
+        ref={sheetRef}
+        aria-hidden="true"
+        className={
+          isGeneratingPdf
+            ? 'pdf-capture pointer-events-none absolute left-0 top-0 w-[190mm] bg-white'
+            : 'hidden print:block'
+        }
+      >
+        <div className={printMode === 'blank' ? 'hidden' : ''}>
+          <FilledSheetPrint rules={rules} sheet={sheet} draft={draft} />
+        </div>
 
-      <div className={printMode === 'blank' ? '' : 'hidden'}>
-        <BlankSheet rules={rules} />
+        <div className={printMode === 'blank' ? '' : 'hidden'}>
+          <BlankSheet rules={rules} />
+        </div>
       </div>
     </section>
   )

@@ -66,33 +66,39 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+}
 
-  .print-sheet {
-    width: 100%;
-    color: #000000;
-    font-size: 11px;
-    line-height: 1.4;
-  }
+/* Layout da ficha: igual na impressão nativa e na captura para PDF. */
+.print-sheet {
+  width: 100%;
+  color: #000000;
+  font-size: 11px;
+  line-height: 1.4;
+}
 
-  .print-sheet table {
-    width: 100%;
-    border-collapse: collapse;
-  }
+.print-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+}
 
-  .print-sheet thead {
-    display: table-header-group;
-  }
+.print-sheet thead {
+  display: table-header-group;
+}
 
-  .print-sheet tr,
-  .print-sheet th,
-  .print-sheet td {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
+.print-sheet tr,
+.print-sheet th,
+.print-sheet td {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
 
-  .print-sheet h2,
-  .print-sheet h3 {
-    break-after: avoid;
-    page-break-after: avoid;
-  }
+.print-sheet h2,
+.print-sheet h3 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* Modo de captura (html2canvas): torna a ficha visível fora do ecrã. */
+.pdf-capture .print-sheet {
+  display: block;
 }
