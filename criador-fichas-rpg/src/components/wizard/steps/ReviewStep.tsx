@@ -1,4 +1,6 @@
-import { ArrowLeft, Download, Printer, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
+import { flushSync } from 'react-dom'
+import { ArrowLeft, Download, FileText, Printer, RotateCcw } from 'lucide-react'
 import { getModule } from '../../../config/modules'
 import {
   buildCharacterSheet,
@@ -15,6 +17,10 @@ import { useCharacterStore } from '../../../store/useCharacterStore'
 import { Button } from '../../ui/Button'
 import { DerivedStatsPanel } from '../DerivedStatsPanel'
 import { StepHeader } from '../StepHeader'
+import { BlankSheet } from '../print/BlankSheet'
+import { FilledSheetPrint } from '../print/FilledSheetPrint'
+
+type PrintMode = 'filled' | 'blank'
 
 function slugify(value: string): string {
   const slug = value
@@ -77,17 +83,25 @@ export function ReviewStep() {
     URL.revokeObjectURL(url)
   }
 
-  const handlePrint = () => {
+  const [printMode, setPrintMode] = useState<PrintMode>('filled')
+
+  /**
+   * Alterna o documento de impressão (ficha preenchida ou em branco), limpa o
+   * <title> para não carimbar o cabeçalho do PDF e restaura tudo ao final.
+   */
+  const handlePrint = (mode: PrintMode) => {
     const previousTitle = document.title
 
-    // O cabeçalho de cada página impressa usa o <title>: limpar antes do
-    // disparo e restaurar logo depois mantém a aba intacta e o PDF limpo.
     document.title = ''
+
+    // flushSync garante que o layout de impressão já está montado no DOM.
+    flushSync(() => setPrintMode(mode))
 
     try {
       window.print()
     } finally {
       document.title = previousTitle
+      setPrintMode('filled')
     }
   }
 
@@ -99,6 +113,7 @@ export function ReviewStep() {
 
   return (
     <section aria-labelledby="step-title">
+      <div className="print:hidden">
       <div className="no-print">
         <StepHeader
           eyebrow={`${rules.name} · Etapa 0${stepIndex + 1}`}
@@ -169,10 +184,17 @@ export function ReviewStep() {
             </Button>
             <Button
               variant="secondary"
-              onClick={handlePrint}
+              onClick={() => handlePrint('filled')}
               icon={<Printer className="h-3.5 w-3.5" aria-hidden="true" />}
             >
               Imprimir
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => handlePrint('blank')}
+              icon={<FileText className="h-3.5 w-3.5" aria-hidden="true" />}
+            >
+              Imprimir Ficha em Branco
             </Button>
           </div>
         </div>
@@ -571,6 +593,16 @@ export function ReviewStep() {
         >
           Nova ficha
         </Button>
+      </div>
+      </div>
+
+      {/* Documentos de impressão: cada um ocupa exatamente 2 folhas A4. */}
+      <div className={printMode === 'blank' ? 'hidden' : ''}>
+        <FilledSheetPrint rules={rules} sheet={sheet} draft={draft} />
+      </div>
+
+      <div className={printMode === 'blank' ? '' : 'hidden'}>
+        <BlankSheet rules={rules} />
       </div>
     </section>
   )

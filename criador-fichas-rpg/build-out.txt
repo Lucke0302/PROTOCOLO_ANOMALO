@@ -1,0 +1,14 @@
+
+> criador-fichas-rpg@0.0.0 build
+> tsc -b && vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2059 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.66 kB │ gzip:   0.40 kB
+dist/assets/index-D3ji-c6C.css   18.57 kB │ gzip:   4.32 kB
+dist/assets/index-C3T_wvoV.js   493.37 kB │ gzip: 139.21 kB
+
+✓ built in 1.58s

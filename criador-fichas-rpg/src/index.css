@@ -41,6 +41,11 @@
   }
 }
 
+@page {
+  size: A4 portrait;
+  margin: 8mm 10mm;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -48,5 +53,46 @@
 
   body {
     background: #ffffff;
+  }
+
+  /* Força o fim da folha 1 (identidade, derivados, atributos e perícias). */
+  .print-page-break {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /* Impede que cartões e linhas de tabela sejam cortados entre páginas. */
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-sheet {
+    width: 100%;
+    color: #000000;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .print-sheet thead {
+    display: table-header-group;
+  }
+
+  .print-sheet tr,
+  .print-sheet th,
+  .print-sheet td {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-sheet h2,
+  .print-sheet h3 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 }

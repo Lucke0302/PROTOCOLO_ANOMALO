@@ -108,7 +108,7 @@ interface LayoutProps {
 
 export function Layout({ module, steps, stepIndex, children }: LayoutProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-black">
+    <div className="flex min-h-screen flex-col bg-white text-black print:block print:min-h-0">
       <header className="no-print border-b border-black">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -135,9 +135,9 @@ export function Layout({ module, steps, stepIndex, children }: LayoutProps) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8 print:max-w-none print:px-0 print:py-0">
         <StepIndicator steps={steps} currentIndex={stepIndex} />
-        <div className="mt-8">{children}</div>
+        <div className="mt-8 print:mt-0">{children}</div>
       </main>
 
       <footer className="no-print border-t border-gray-200 py-5">
