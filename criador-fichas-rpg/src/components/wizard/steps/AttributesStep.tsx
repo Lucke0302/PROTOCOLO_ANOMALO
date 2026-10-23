@@ -12,6 +12,7 @@ import {
   getProfessionRequirementStatus,
   getRemainingAttributePoints,
   getSpentAttributePoints,
+  getWizardSteps,
 } from '../../../lib/characterRules'
 import {
   createAttributesSchema,
@@ -31,7 +32,7 @@ export function AttributesStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const archetype = getArchetype(rules, draft.archetypeId)
   const profession = getDraftProfession(draft, rules)
 
@@ -221,13 +222,13 @@ export function AttributesStep() {
 
         <WizardFooter
           onBack={previousStep}
-          nextLabel="Avançar para habilidades"
+          nextLabel="Avançar para perícias"
           nextDisabled={remaining !== 0 || !requirementMet}
           hint={
             !requirementMet && professionAttributeLabel
               ? `${professionAttributeLabel} precisa atingir ${requirement?.required} no valor final (bônus de +${requirement?.bonus} incluso).`
               : remaining === 0
-                ? 'Pool completo. Avance para escolher as habilidades gerais.'
+                ? 'Pool completo. Avance para distribuir as perícias.'
                 : `Ainda restam ${remaining} ponto(s) de atributo para distribuir.`
           }
         />

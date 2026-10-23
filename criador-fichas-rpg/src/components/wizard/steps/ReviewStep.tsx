@@ -3,11 +3,13 @@ import { getModule } from '../../../config/modules'
 import {
   buildCharacterSheet,
   getAnchorPointsTotal,
-  getGeneralSkillPoolBonus,
+  getFreeSkillBonuses,
+  getFreeSkillBonusTotal,
   getProfessionRequirementStatus,
   getSkillBaseValues,
   getTotalAttributeBonus,
   getTotalSkillPool,
+  getWizardSteps,
 } from '../../../lib/characterRules'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { Button } from '../../ui/Button'
@@ -32,9 +34,10 @@ export function ReviewStep() {
   const resetDraft = useCharacterStore((state) => state.resetDraft)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const sheet = buildCharacterSheet(draft, rules)
   const baseSkillValues = getSkillBaseValues(rules, sheet.attributes)
+  const freeSkillBonuses = getFreeSkillBonuses(sheet.freeSkillBonusPicks, rules)
 
   const investedSkills = rules.skills
     .map((definition) => ({
@@ -47,10 +50,14 @@ export function ReviewStep() {
         sheet.professionSkillId === definition.id
           ? sheet.professionSkillBonus
           : 0,
+      freeBonus: freeSkillBonuses[definition.id],
     }))
     .filter(
       (entry) =>
-        entry.invested > 0 || entry.bonus > 0 || entry.professionBonus > 0,
+        entry.invested > 0 ||
+        entry.bonus > 0 ||
+        entry.professionBonus > 0 ||
+        entry.freeBonus > 0,
     )
     .sort(
       (a, b) =>
@@ -111,18 +118,23 @@ export function ReviewStep() {
                 ) : null}
               </>
             ) : null}
+            {sheet.presenceReason ? (
+              <p className="mt-2 max-w-xl text-xs leading-relaxed text-gray-600">
+                <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
+                  Motivo de presença ·{' '}
+                </span>
+                {sheet.presenceReason}
+              </p>
+            ) : null}
             <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-gray-500">
               Atributos {sheet.spentAttributePoints}/
               {rules.attributeRules.pool} · Perícias {sheet.spentSkillPoints}/
-              {getTotalSkillPool(
-                draft.skills,
-                rules,
-                draft.generalSkills.length,
-              )}{' '}
-              · Habilidades {sheet.generalSkills.length}/
-              {rules.generalSkillRules.maxChoices} · Âncoras{' '}
-              {getAnchorPointsTotal(sheet.anchors)}/{sheet.anchorPool} · Carga{' '}
-              {sheet.carry.usedSlots}/{sheet.carry.maxSlots}
+              {getTotalSkillPool(draft.skills, rules, sheet.attributes)} · Habilidades{' '}
+              {sheet.generalSkills.length}/
+              {rules.generalSkillRules.maxChoices} · Bônus vagas +{sheet.freeSkillBonusPicks.length * rules.generalSkillRules.freeSlotBonusPerSlot}{' '}
+              · Âncoras {getAnchorPointsTotal(sheet.anchors)}/
+              {sheet.anchorPool} · Carga {sheet.carry.usedSlots}/
+              {sheet.carry.maxSlots}
             </p>
             {sheet.archetype ? (
               <p className="mt-3 max-w-xl text-xs leading-relaxed text-gray-500">
@@ -288,7 +300,15 @@ export function ReviewStep() {
         {investedSkills.length > 0 ? (
           <ul className="divide-y divide-gray-200 border border-gray-300">
             {investedSkills.map(
-              ({ definition, total, base, invested, bonus, professionBonus }) => (
+              ({
+                definition,
+                total,
+                base,
+                invested,
+                bonus,
+                professionBonus,
+                freeBonus,
+              }) => (
               <li
                 key={definition.id}
                 className="flex items-center justify-between gap-4 px-4 py-3"
@@ -311,6 +331,11 @@ export function ReviewStep() {
                       +{professionBonus} prof.
                     </span>
                   ) : null}
+                  {freeBonus > 0 ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-navy-blue">
+                      +{freeBonus} vaga
+                    </span>
+                  ) : null}
                   <span className="font-mono text-lg leading-none">{total}</span>
                 </div>
               </li>
@@ -329,7 +354,8 @@ export function ReviewStep() {
           <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-gray-400">
             {sheet.generalSkills.length}/{rules.generalSkillRules.maxChoices}{' '}
             escolhidas · +
-            {getGeneralSkillPoolBonus(sheet.generalSkills.length, rules)} pool
+            {getFreeSkillBonusTotal(sheet.generalSkills.length, rules)} em
+            perícias
           </span>
         </div>
 
@@ -350,6 +376,7 @@ export function ReviewStep() {
                     <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
                       {category?.label ?? skill.category} · {skill.cost}{' '}
                       {skill.resource === 'estamina' ? 'ST' : 'EM'}
+                      {skill.costNote ? ` · ${skill.costNote}` : ''}
                     </p>
                     <p className="mt-1 text-[11px] leading-snug text-gray-500">
                       {skill.effect}
@@ -364,8 +391,46 @@ export function ReviewStep() {
           </ul>
         ) : (
           <p className="border border-gray-300 p-4 text-xs text-gray-500">
-            Nenhuma habilidade geral escolhida. As vagas livres foram
-            convertidas em pontos de perícia.
+            Nenhuma habilidade geral escolhida. As vagas livres viraram bônus
+            direto em perícias.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold">Bônus de vagas livres</h3>
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-gray-400">
+            +{getFreeSkillBonusTotal(sheet.generalSkills.length, rules)} pontos
+            · fora do pool, respeitando o teto
+          </span>
+        </div>
+
+        {sheet.freeSkillBonusPicks.length > 0 ? (
+          <ul className="divide-y divide-gray-200 border border-gray-300">
+            {sheet.freeSkillBonusPicks.map((skillId, index) => (
+              <li
+                key={`${skillId}-${index}`}
+                className="flex items-center justify-between gap-4 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm">
+                    {rules.skills.find((skill) => skill.id === skillId)?.label ??
+                      skillId}
+                  </p>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-gray-400">
+                    vaga 0{index + 1} · valor final {sheet.skills[skillId]}
+                  </p>
+                </div>
+                <span className="shrink-0 font-mono text-lg leading-none text-navy-blue">
+                  +{rules.generalSkillRules.freeSlotBonusPerSlot}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="border border-gray-300 p-4 text-xs text-gray-500">
+            Nenhuma vaga livre: as duas habilidades gerais foram escolhidas.
           </p>
         )}
       </section>

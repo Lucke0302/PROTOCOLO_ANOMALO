@@ -26,14 +26,7 @@ export type BaseSkillId =
   | 'medicina'
   | 'sobrevivencia'
 
-export type ModuleASkillId =
-  | 'analise-de-cena'
-  | 'interrogatorio'
-  | 'conducao'
-  | 'manuseio-de-evidencias'
-  | 'protocolo-de-campo'
-
-export type SkillId = BaseSkillId | ModuleASkillId
+export type SkillId = BaseSkillId
 
 export type SkillCategory = 'base' | 'module'
 
@@ -54,13 +47,34 @@ export type GeneralSkillCategory = 'physical' | 'mental'
 /** Recurso consumido ao acionar uma habilidade geral. */
 export type ResourceKey = 'estamina' | 'energia'
 
+/** Exigência individual de uma habilidade: atributo OU perícia com mínimo. */
+export type GeneralSkillRequirementEntry =
+  | {
+      attribute: AttributeKey
+      /** Valor mínimo exigido no atributo final. */
+      min: number
+      /** Rótulo exibido na UI; padrão: nome do atributo no módulo. */
+      label?: string
+    }
+  | {
+      skill: SkillId
+      /** Valor mínimo exigido no valor final da perícia. */
+      min: number
+      /** Rótulo exibido na UI; padrão: nome da perícia no módulo. */
+      label?: string
+    }
+
 /**
  * Pré-requisitos avaliados com os atributos finais e o valor final das
- * perícias (base do atributo + investimento + bônus de arquétipo).
+ * perícias (base do atributo + investimento + bônus de arquétipo/profissão).
+ *
+ * - `all`: precisa ser integralmente satisfeito (E).
+ * - `anyOf`: cada grupo é um conjunto que deve ser satisfeito por inteiro;
+ *   basta que UM dos grupos seja satisfeito (OU).
  */
 export interface GeneralSkillRequirement {
-  attributes?: Partial<Record<AttributeKey, number>>
-  skills?: Partial<Record<SkillId, number>>
+  all?: readonly GeneralSkillRequirementEntry[]
+  anyOf?: readonly (readonly GeneralSkillRequirementEntry[])[]
 }
 
 export interface GeneralSkill {
@@ -71,6 +85,8 @@ export interface GeneralSkill {
   resource: ResourceKey
   /** Custo no recurso indicado. */
   cost: number
+  /** Custo adicional descritivo (ex.: munição gasta por turno). */
+  costNote?: string
   description: string
   effect: string
   requirement?: GeneralSkillRequirement
@@ -79,8 +95,8 @@ export interface GeneralSkill {
 export interface GeneralSkillRules {
   /** Máximo de habilidades gerais escolhidas. */
   maxChoices: number
-  /** Bônus de pool de perícias por habilidade NÃO escolhida. */
-  poolBonusPerUnchosen: number
+  /** Bônus de perícia concedido por habilidade NÃO escolhida. */
+  freeSlotBonusPerSlot: number
 }
 
 export interface GeneralSkillCategoryDefinition {
@@ -98,6 +114,8 @@ export interface GeneralSkillRequirementStatus {
   current: number
   required: number
   met: boolean
+  /** Exigência pertencente a um grupo alternativo (OU). */
+  alternative?: boolean
 }
 
 /** Âncora pessoal: vínculo narrativo com pontos investidos. */
@@ -122,8 +140,9 @@ export interface AnchorRules {
 export type WizardStepId =
   | 'identity'
   | 'attributes'
-  | 'general-skills'
   | 'skills'
+  | 'general-skills'
+  | 'free-skill-bonus'
   | 'anchors'
   | 'equipment'
   | 'review'
@@ -145,6 +164,20 @@ export interface Equipment {
   effect?: string
   /** Bônus concedido ao limite máximo de slots (mochila). */
   slotBonus?: number
+  /**
+   * Proibido na criação de ficha de Nível 1 (armas longas/pesadas). A
+   * restrição vale para qualquer arquétipo ou profissão.
+   */
+  creationBlocked?: boolean
+  /**
+   * Item de ofício: entra no inventário apenas pela profissão declarada em
+   * `grantedByProfessionIds`, de forma automática e não removível.
+   */
+  isExclusiveToProfession?: boolean
+  /** Profissões que concedem o item quando `isExclusiveToProfession`. */
+  grantedByProfessionIds?: readonly CivilProfessionId[]
+  /** Exige porte/credencial de arma para ser escolhido na criação. */
+  requiresWeaponPermit?: boolean
 }
 
 export interface EquipmentCategoryDefinition {
@@ -161,6 +194,10 @@ export interface EquipmentRules {
   baseSlots: number
   /** Bônus de slots concedido pelos itens com `slotBonus`. */
   backpackBonus: number
+  /** Arquétipos que podem portar arma curta na criação (mediante aprovação). */
+  weaponPermitArchetypeIds: readonly ArchetypeId[]
+  /** Profissões civis que podem portar arma curta na criação. */
+  weaponPermitProfessionIds: readonly CivilProfessionId[]
 }
 
 /** Ocupação atual de carga do personagem. */
@@ -257,24 +294,27 @@ export interface AttributeRules {
   capIncludesBonuses: boolean
 }
 
-/** Limite de investimento reduzido para certas perícias e arquétipos. */
+/** Limite absoluto do valor final (base + investimento) para certas perícias. */
 export interface SkillCapRule {
   skillIds: readonly SkillId[]
   archetypeIds: readonly ArchetypeId[]
-  /** Fração do teto de investimento permitida (ex.: 0.4 = 40%). */
-  maxRatio: number
+  /** Teto absoluto do valor final permitido (ex.: 40). */
+  maxLimit: number
 }
 
 export interface SkillRules {
   /** Pool de pontos que deve ser investido por completo. */
   pool: number
-  /** Teto de pontos aplicados manualmente em uma única perícia. */
+  /**
+   * Teto absoluto do valor final (base do atributo + pontos investidos) de uma
+   * perícia. O investimento manual fica limitado a `maxRank - base`.
+   */
   maxRank: number
   /** Valor base da perícia derivado do atributo correspondente. */
   baseFromAttribute: (attributeValue: number) => number
-  /** Pontos extras de pool concedidos quando uma perícia atinge o teto. */
+  /** Pontos extras de pool concedidos quando o valor final atinge o teto. */
   bonusAtMax: number
-  /** Limites adicionais de investimento por arquétipo. */
+  /** Limites adicionais absolutos de valor final por arquétipo. */
   caps: readonly SkillCapRule[]
 }
 
@@ -321,12 +361,20 @@ export interface CharacterDraft {
   professionId: CivilProfessionId | null
   /** Perícia bonificada quando a profissão oferece mais de uma opção. */
   professionSkillChoice: SkillId | null
+  /** Motivo de presença: obrigatório para o arquétipo Civil. */
+  presenceReason: string
   /** Pontos distribuídos manualmente em cada atributo. */
   attributes: Attributes
   /** Pontos investidos manualmente em cada perícia. */
   skills: SkillRanks
   /** Habilidades gerais escolhidas (0 a `generalSkillRules.maxChoices`). */
   generalSkills: GeneralSkill[]
+  /**
+   * Uma perícia por vaga de habilidade NÃO escolhida: cada escolha concede
+   * `freeSlotBonusPerSlot` pontos diretos no valor final da perícia, fora do
+   * pool e sem consumir o teto de investimento.
+   */
+  freeSkillBonusPicks: SkillId[]
   /** Âncoras pessoais com pontos distribuídos. */
   anchors: Anchor[]
   /** Itens escolhidos no catálogo de equipamentos do módulo. */
@@ -340,6 +388,8 @@ export interface CharacterSheet {
   archetype: ArchetypeDefinition | null
   /** Profissão civil escolhida (nula para outros arquétipos). */
   profession: CivilProfession | null
+  /** Motivo de presença declarado pelo personagem Civil. */
+  presenceReason: string
   /** Atributo principal da profissão (fixo ou escolhido no caso flexível). */
   professionAttribute: AttributeKey | null
   /** Bônus de atributo concedido pela profissão (fora do pool). */
@@ -354,8 +404,10 @@ export interface CharacterSheet {
   skills: SkillRanks
   derived: DerivedStats
   generalSkills: GeneralSkill[]
+  /** Perícias que receberam bônus de vaga livre (uma entrada por vaga). */
+  freeSkillBonusPicks: SkillId[]
   anchors: Anchor[]
-  /** Pool efetivo de perícias (base + habilidades gerais + bônus de teto). */
+  /** Pool efetivo de perícias (base + bônus de teto). */
   skillPool: number
   /** Total de pontos exigido pelas âncoras. */
   anchorPool: number

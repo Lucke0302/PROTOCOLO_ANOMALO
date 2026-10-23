@@ -5,8 +5,10 @@ import {
   canChooseGeneralSkill,
   getFinalAttributes,
   getFinalSkillValues,
-  getGeneralSkillPoolBonus,
+  getFreeSkillBonusSlots,
+  getFreeSkillBonusTotal,
   getGeneralSkillRequirements,
+  getWizardSteps,
   meetsGeneralSkillRequirements,
 } from '../../../lib/characterRules'
 import { useCharacterStore } from '../../../store/useCharacterStore'
@@ -25,11 +27,13 @@ export function GeneralSkillsStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const { maxChoices } = rules.generalSkillRules
   const chosen = draft.generalSkills
   const remainingChoices = Math.max(0, maxChoices - chosen.length)
-  const poolBonus = getGeneralSkillPoolBonus(chosen.length, rules)
+  const freeBonusSlots = getFreeSkillBonusSlots(chosen.length, rules)
+  const freeBonusTotal = getFreeSkillBonusTotal(chosen.length, rules)
+  const freeSlotBonus = rules.generalSkillRules.freeSlotBonusPerSlot
   const isFull = chosen.length >= maxChoices
 
   const finalAttributes = getFinalAttributes(draft, rules)
@@ -37,12 +41,7 @@ export function GeneralSkillsStep() {
   const derived = calculateDerivedStats(finalAttributes, rules)
   const invalidChosen = chosen.filter(
     (skill) =>
-      !meetsGeneralSkillRequirements(
-        skill,
-        rules,
-        finalAttributes,
-        finalSkills,
-      ),
+      !meetsGeneralSkillRequirements(skill, rules, finalAttributes, finalSkills),
   )
 
   const spentStamina = chosen
@@ -93,12 +92,12 @@ export function GeneralSkillsStep() {
               </p>
             </div>
             <div className="p-4">
-              <p className="label-micro">Bônus de perícias</p>
+              <p className="label-micro">Bônus em perícias</p>
               <p className="mt-1 font-mono text-2xl leading-none text-navy-blue">
-                +{poolBonus}
+                +{freeBonusTotal}
               </p>
               <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-gray-500">
-                +{rules.generalSkillRules.poolBonusPerUnchosen} por vaga livre
+                +{freeSlotBonus} por vaga livre · {freeBonusSlots} vaga(s)
               </p>
             </div>
           </div>
@@ -128,7 +127,7 @@ export function GeneralSkillsStep() {
             {invalidChosen.length} habilidade(s) escolhida(s) deixaram de cumprir
             os pré-requisitos após a alteração de atributos:{' '}
             {invalidChosen.map((skill) => skill.label).join(', ')}. Remova ou
-            ajuste os atributos para continuar.
+            ajuste os atributos e as perícias para continuar.
           </p>
         ) : null}
 
@@ -169,8 +168,11 @@ export function GeneralSkillsStep() {
                     finalAttributes,
                     finalSkills,
                   )
-                  const meetsRequirements = requirements.every(
-                    (status) => status.met,
+                  const meetsRequirements = meetsGeneralSkillRequirements(
+                    skill,
+                    rules,
+                    finalAttributes,
+                    finalSkills,
                   )
                   const canChoose = canChooseGeneralSkill(skill, draft, rules)
                   const isBlocked = !isChosen && !canChoose
@@ -196,6 +198,11 @@ export function GeneralSkillsStep() {
                             {skill.cost} {category.abbreviation}
                           </span>
                         </div>
+                        {skill.costNote ? (
+                          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.1em] text-gray-400">
+                            + {skill.costNote}
+                          </p>
+                        ) : null}
                         <p className="mt-1.5 text-[11px] leading-snug text-gray-500">
                           {skill.description}
                         </p>
@@ -212,8 +219,9 @@ export function GeneralSkillsStep() {
                                   status.met ? 'text-navy-blue' : 'text-gray-400'
                                 }`}
                               >
-                                {status.met ? '✓' : '✕'} {status.label}{' '}
-                                {status.current}/{status.required}
+                                {status.met ? '✓' : '✕'}{' '}
+                                {status.alternative ? 'OU ' : ''}
+                                {status.label} {status.current}/{status.required}
                               </li>
                             ))}
                           </ul>
@@ -306,19 +314,24 @@ export function GeneralSkillsStep() {
             </ul>
           ) : (
             <p className="border border-gray-300 p-4 text-xs text-gray-500">
-              Nenhuma habilidade escolhida. As duas vagas livres somam +
-              {getGeneralSkillPoolBonus(0, rules)} pontos ao pool de perícias.
+              Nenhuma habilidade escolhida. As {freeBonusSlots} vagas livres
+              somam +{freeBonusTotal} pontos a distribuir em perícias na etapa
+              seguinte.
             </p>
           )}
         </section>
 
         <WizardFooter
           onBack={previousStep}
-          nextLabel="Avançar para perícias"
+          nextLabel={
+            freeBonusSlots > 0
+              ? 'Avançar para bônus de vagas'
+              : 'Avançar para âncoras'
+          }
           hint={
             remainingChoices > 0
-              ? `${remainingChoices} vaga(s) livre(s) geram +${poolBonus} pontos de perícia.`
-              : 'Limite de habilidades atingido. Nenhum bônus extra de perícia.'
+              ? `${remainingChoices} vaga(s) livre(s) geram +${freeBonusTotal} pontos de perícia na próxima etapa.`
+              : 'Limite de habilidades atingido. A etapa de bônus é dispensada — avance para as âncoras.'
           }
         />
       </form>

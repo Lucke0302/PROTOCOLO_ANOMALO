@@ -5,6 +5,7 @@ import { getModule } from '../../../config/modules'
 import {
   getAnchorPool,
   getFinalAttributes,
+  getWizardSteps,
 } from '../../../lib/characterRules'
 import {
   createAnchorsSchema,
@@ -23,7 +24,7 @@ export function AnchorsStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const { count, minPerAnchor, basePoints } = rules.anchorRules
   const finalAttributes = getFinalAttributes(draft, rules)
   const anchorPool = getAnchorPool(finalAttributes, rules)

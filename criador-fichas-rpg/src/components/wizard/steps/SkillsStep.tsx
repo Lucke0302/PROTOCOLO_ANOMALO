@@ -5,7 +5,6 @@ import {
   applyAttributeBonuses,
   getArchetype,
   getDraftProfession,
-  getGeneralSkillPoolBonus,
   getProfessionSkillId,
   getRemainingSkillPoints,
   getSkillBaseValues,
@@ -13,6 +12,7 @@ import {
   getSkillPoolBonus,
   getSpentSkillPoints,
   getTotalSkillPool,
+  getWizardSteps,
 } from '../../../lib/characterRules'
 import {
   createSkillsSchema,
@@ -31,7 +31,7 @@ export function SkillsStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const archetype = getArchetype(rules, draft.archetypeId)
   const profession = getDraftProfession(draft, rules)
   const professionSkillId = getProfessionSkillId(
@@ -47,20 +47,6 @@ export function SkillsStep() {
   const moduleSkills = rules.skills.filter(
     (skill) => skill.category === 'module',
   )
-
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<SkillsFormValues>({
-    resolver: zodResolver(
-      createSkillsSchema(rules, archetype, draft.generalSkills.length),
-    ),
-    defaultValues: draft.skills,
-    mode: 'onChange',
-  })
-
-  const skills = useWatch({ control }) as SkillsFormValues
   const finalAttributes = applyAttributeBonuses(
     rules,
     draft.attributes,
@@ -68,20 +54,26 @@ export function SkillsStep() {
     profession,
     draft.professionAttributeChoice,
   )
+
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SkillsFormValues>({
+    resolver: zodResolver(
+      createSkillsSchema(rules, archetype, finalAttributes),
+    ),
+    defaultValues: draft.skills,
+    mode: 'onChange',
+  })
+
+  const skills = useWatch({ control }) as SkillsFormValues
   const baseValues = getSkillBaseValues(rules, finalAttributes)
-  const caps = getSkillCaps(rules, archetype)
+  const caps = getSkillCaps(rules, archetype, finalAttributes)
   const spent = getSpentSkillPoints(skills)
-  const totalPool = getTotalSkillPool(skills, rules, draft.generalSkills.length)
-  const poolBonus = getSkillPoolBonus(skills, rules)
-  const generalSkillBonus = getGeneralSkillPoolBonus(
-    draft.generalSkills.length,
-    rules,
-  )
-  const remaining = getRemainingSkillPoints(
-    skills,
-    rules,
-    draft.generalSkills.length,
-  )
+  const totalPool = getTotalSkillPool(skills, rules, finalAttributes)
+  const poolBonus = getSkillPoolBonus(skills, rules, finalAttributes)
+  const remaining = getRemainingSkillPoints(skills, rules, finalAttributes)
   const spentPercent = Math.min(
     100,
     Math.max(0, totalPool > 0 ? (spent / totalPool) * 100 : 0),
@@ -115,7 +107,7 @@ export function SkillsStep() {
                 {totalPool}
               </p>
               <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-gray-500">
-                base {rules.skillRules.pool} · habilidades +{generalSkillBonus}
+                base {rules.skillRules.pool} · bônus de teto +{poolBonus}
               </p>
             </div>
             <div className="p-4">
@@ -215,47 +207,51 @@ export function SkillsStep() {
           />
         </section>
 
-        <section>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h3 className="text-sm font-semibold">Perícias · {rules.name}</h3>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-gray-400">
-              específicas do módulo
-            </span>
-          </div>
-          <SkillDistribution
-            control={control}
-            skills={moduleSkills}
-            attributes={rules.attributes}
-            baseValues={baseValues}
-            caps={caps}
-            bonusThreshold={rules.skillRules.maxRank}
-            bonusAtMax={rules.skillRules.bonusAtMax}
-            remaining={remaining}
-            archetype={archetype}
-            professionSkillId={professionSkillId}
-            professionBonus={professionBonus}
-          />
-        </section>
+        {moduleSkills.length > 0 ? (
+          <section>
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h3 className="text-sm font-semibold">Perícias · {rules.name}</h3>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-gray-400">
+                específicas do módulo
+              </span>
+            </div>
+            <SkillDistribution
+              control={control}
+              skills={moduleSkills}
+              attributes={rules.attributes}
+              baseValues={baseValues}
+              caps={caps}
+              bonusThreshold={rules.skillRules.maxRank}
+              bonusAtMax={rules.skillRules.bonusAtMax}
+              remaining={remaining}
+              archetype={archetype}
+              professionSkillId={professionSkillId}
+              professionBonus={professionBonus}
+            />
+          </section>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-gray-300 p-3">
             <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-gray-500">
-              Habilidades gerais
+              Próximas etapas
             </span>
             <span className="text-xs font-medium">
-              {draft.generalSkills.length}/
-              {rules.generalSkillRules.maxChoices} escolhidas
+              Habilidades {draft.generalSkills.length}/
+              {rules.generalSkillRules.maxChoices}
             </span>
             <span className="text-[11px] text-gray-500">
-              +{generalSkillBonus} pontos de pool por vagas não preenchidas.
+              Cada vaga de habilidade não preenchida vira +
+              {rules.generalSkillRules.freeSlotBonusPerSlot} pontos em uma
+              perícia na etapa de bônus.
             </span>
           </div>
 
         <WizardFooter
           onBack={previousStep}
-          nextLabel="Avançar para âncoras"
+          nextLabel="Avançar para habilidades"
           hint={
             remaining === 0
-              ? 'Pool completo. Avance para distribuir as âncoras.'
+              ? 'Pool completo. Avance para escolher as habilidades gerais.'
               : remaining > 0
                 ? `Ainda restam ${remaining} ponto(s) de perícia para distribuir.`
                 : `Excedeu o pool em ${Math.abs(remaining)} ponto(s). Reduza os investimentos antes de avançar.`

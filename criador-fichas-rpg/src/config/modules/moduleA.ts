@@ -1,8 +1,10 @@
 import type {
   ArchetypeDefinition,
+  ArchetypeId,
   AttributeDefinition,
   AttributeKey,
   CivilProfession,
+  CivilProfessionId,
   DerivedStatDefinition,
   Equipment,
   EquipmentCategoryDefinition,
@@ -28,15 +30,16 @@ export const ATTRIBUTE_KEYS: readonly AttributeKey[] = [
 // Ajuste apenas estes valores para recalibrar o módulo. A UI lê tudo daqui.
 // - Atributos: base 30, exatos 80 pontos para distribuir e teto 75 (o teto já
 //   contabiliza os bônus de arquétipo).
-// - Perícias: base = floor(atributo / 2), pool de 150 pontos, teto de 60 pontos
-//   aplicados por perícia e +10 de pool quando uma perícia atinge 60.
+// - Perícias: base = floor(atributo / 2), pool de 150 pontos, teto final de 60
+//   pontos por perícia (base + investimento) e +10 de pool quando o valor final
+//   atinge 60. Perícias de combate do Civil têm teto final absoluto de 40.
 export const MODULE_A_ATTRIBUTE_BASE = 30
 export const MODULE_A_ATTRIBUTE_POOL = 80
 export const MODULE_A_ATTRIBUTE_MAX = 75
-export const MODULE_A_SKILL_POOL = 150
+export const MODULE_A_SKILL_POOL = 80
 export const MODULE_A_SKILL_MAX_RANK = 60
 export const MODULE_A_SKILL_BONUS_AT_MAX = 10
-export const MODULE_A_CIVIL_COMBAT_RATIO = 0.4
+export const MODULE_A_CIVIL_COMBAT_MAX = 40
 
 // Profissões contemporâneas (exclusivas do arquétipo Civil): o atributo
 // principal é definido pela profissão (nunca livre), recebe um bônus fixo fora
@@ -53,13 +56,34 @@ export const MODULE_A_SLOT_ATTRIBUTE_STEP = 10
 export const MODULE_A_BASE_SLOTS = 2
 export const MODULE_A_BACKPACK_SLOT_BONUS = 3
 
+// Restrições de equipamento na criação de ficha (Nível 1):
+// - Armas longas/pesadas são proibidas para qualquer personagem.
+// - Porte de arma curta (revólver/pistola) e munição solta exigem credencial:
+//   apenas Detetive, Policial ou o Civil com profissão Segurança Privada.
+export const MODULE_A_LEVEL_ONE_PROHIBITED_EQUIPMENT_IDS: readonly string[] = [
+  'espingarda-submetralhadora',
+  'fuzil',
+]
+
+export const MODULE_A_WEAPON_PERMIT_ARCHETYPE_IDS: readonly ArchetypeId[] = [
+  'detetive',
+  'policial',
+]
+
+export const MODULE_A_WEAPON_PERMIT_PROFESSION_IDS: readonly CivilProfessionId[] =
+  ['seguranca-privada']
+
+/** Mínimo de caracteres do Motivo de Presença exigido do arquétipo Civil. */
+export const MODULE_A_PRESENCE_REASON_MIN_LENGTH = 10
+
 // ---------------------------------------------------------------------------
 // Habilidades Gerais (regras oficiais)
 // ---------------------------------------------------------------------------
-// Até 2 escolhas. Cada vaga não preenchida devolve +10 pontos ao pool de
-// perícias: (2 - escolhidas) * 10. Físicas gastam ST, mentais gastam EM.
+// Até 2 escolhas. Cada vaga não preenchida concede +10 pontos diretos em uma
+// perícia, escolhida na etapa de Bônus (fora do pool, respeitando o teto).
+// Físicas gastam ST, mentais gastam EM.
 export const MODULE_A_GENERAL_SKILL_MAX_CHOICES = 2
-export const MODULE_A_GENERAL_SKILL_POOL_BONUS = 10
+export const MODULE_A_GENERAL_SKILL_FREE_SLOT_BONUS = 10
 
 // ---------------------------------------------------------------------------
 // Âncoras Pessoais (regras oficiais)
@@ -73,15 +97,15 @@ export const MODULE_A_ANCHOR_ATTRIBUTE: AttributeKey = 'psique'
 const generalSkillCategories: readonly GeneralSkillCategoryDefinition[] = [
   {
     id: 'physical',
-    label: 'Físicas',
-    description: 'Treino corporal e resposta de combate.',
+    label: 'Físicas e de Combate',
+    description: 'Treino corporal, disparo e resistência sob estresse.',
     resource: 'estamina',
     abbreviation: 'ST',
   },
   {
     id: 'mental',
-    label: 'Mentais',
-    description: 'Controle de pressão, análise e comando.',
+    label: 'Mentais e de Suporte',
+    description: 'Controle de pressão, análise e comando do grupo.',
     resource: 'energia',
     abbreviation: 'EM',
   },
@@ -95,21 +119,26 @@ export const MODULE_A_GENERAL_SKILL_CATALOG: readonly GeneralSkill[] = [
     category: 'physical',
     resource: 'estamina',
     cost: 1,
-    description: 'Disparo com respiração controlada e apoio firme.',
+    description: 'Respiração funda e apoio firme antes do disparo.',
     effect:
-      'Ao mirar sem se deslocar, ignora penalidades por alcance e reduz cobertura leve.',
-    requirement: { attributes: { destreza: 45 }, skills: { combate: 20 } },
+      'Ao abdicar da ação de movimento no turno, o próximo disparo com arma de fogo na mesma rodada recebe Vantagem.',
+    requirement: {
+      all: [
+        { attribute: 'destreza', min: 55 },
+        { skill: 'combate', label: 'Combate (Armas de Fogo)', min: 30 },
+      ],
+    },
   },
   {
     id: 'arrancada-de-adrenalina',
     label: 'Arrancada de Adrenalina',
     category: 'physical',
     resource: 'estamina',
-    cost: 2,
-    description: 'Explosão de movimento sustentada pelo próprio fôlego.',
+    cost: 1,
+    description: 'O instinto de sobrevivência vira explosão de movimento.',
     effect:
-      'Em um avanço curto, ignora terreno difícil e não sofre penalidade por movimento.',
-    requirement: { attributes: { fisico: 40 }, skills: { atletismo: 20 } },
+      'Ignora todas as penalidades de deslocamento de uma lesão grave por 1 rodada ou recebe Vantagem em Atletismo para escapar de uma manobra de Agarre.',
+    requirement: { all: [{ attribute: 'fisico', min: 55 }] },
   },
   {
     id: 'fogo-de-supressao',
@@ -117,20 +146,27 @@ export const MODULE_A_GENERAL_SKILL_CATALOG: readonly GeneralSkill[] = [
     category: 'physical',
     resource: 'estamina',
     cost: 2,
-    description: 'Volume de disparos para conter o avanço de alvos.',
+    costNote: '1 turno inteiro de munição',
+    description: 'Disparos agressivos para manter o alvo acuado, não para matar.',
     effect:
-      'Mantém uma área sob contenção, forçando alvos a permanecer em abrigo.',
-    requirement: { attributes: { fisico: 45 }, skills: { combate: 20 } },
+      'O alvo sofre Desvantagem no próximo ataque que fizer ou perde a ação de movimento caso tente avançar na sua direção.',
+    requirement: {
+      all: [
+        { attribute: 'destreza', min: 55 },
+        { skill: 'combate', label: 'Combate (Armas de Fogo)', min: 40 },
+      ],
+    },
   },
   {
     id: 'resiliencia-bruta',
     label: 'Resiliência Bruta',
     category: 'physical',
     resource: 'estamina',
-    cost: 1,
-    description: 'Corpo treinado para absorver impacto e esforço extremo.',
-    effect: 'Reduz a gravidade de ferimentos leves e o desgaste por esforço.',
-    requirement: { attributes: { fisico: 55 }, skills: { sobrevivencia: 25 } },
+    cost: 2,
+    description: 'Corpo treinado para absorver o impacto que o derrubaria.',
+    effect:
+      'Ao sofrer dano físico que reduziria seus PV a 0, mantém-se de pé com exatamente 1 PV. Uma vez por cena; não vale contra dano massivo de Morte Instantânea.',
+    requirement: { all: [{ attribute: 'fisico', min: 60 }] },
   },
   {
     id: 'desfibrilador-humano',
@@ -138,10 +174,15 @@ export const MODULE_A_GENERAL_SKILL_CATALOG: readonly GeneralSkill[] = [
     category: 'mental',
     resource: 'energia',
     cost: 2,
-    description: 'Mãos firmes e leitura clínica sob pressão.',
+    description: 'O desespero ensina a improvisar com as mãos trêmulas.',
     effect:
-      'Estabiliza um alvo inconsciente em campo com ação completa e material mínimo.',
-    requirement: { attributes: { intelecto: 45 }, skills: { medicina: 20 } },
+      'Repete a estabilização de um aliado CAÍDO que acabou de falhar. Se a tentativa extra for Falha Crítica, o paciente morre e você sofre 1d6 de dano de Estabilidade Mental pela culpa.',
+    requirement: {
+      all: [
+        { attribute: 'intelecto', min: 55 },
+        { skill: 'medicina', min: 40 },
+      ],
+    },
   },
   {
     id: 'hiperfoco-investigativo',
@@ -149,12 +190,14 @@ export const MODULE_A_GENERAL_SKILL_CATALOG: readonly GeneralSkill[] = [
     category: 'mental',
     resource: 'energia',
     cost: 1,
-    description: 'Isola estímulos externos e sustenta atenção absoluta.',
+    description: 'Filtra o caos e sustenta atenção absoluta nos detalhes.',
     effect:
-      'Concede vantagem em análises prolongadas e na leitura de detalhes de cena.',
+      'Ao entrar em uma sala ou analisar uma cena de crime, ganha metade do valor da perícia Investigação como bônus nela (limite 90%).',
     requirement: {
-      attributes: { intelecto: 40 },
-      skills: { investigacao: 20 },
+      anyOf: [
+        [{ attribute: 'intelecto', min: 60 }],
+        [{ skill: 'investigacao', min: 40 }],
+      ],
     },
   },
   {
@@ -163,24 +206,21 @@ export const MODULE_A_GENERAL_SKILL_CATALOG: readonly GeneralSkill[] = [
     category: 'mental',
     resource: 'energia',
     cost: 1,
-    description: 'Presença que organiza o grupo mesmo sob fogo.',
+    description: 'Uma ordem, um tapa ou um puxão que devolve o foco ao aliado.',
     effect:
-      'Coordena aliados sob pressão e sustenta a calma diante de pânico coletivo.',
-    requirement: { attributes: { psique: 45 }, skills: { persuasao: 20 } },
+      'Quando um aliado que você pode ver e ouvir falha em Estabilidade Mental ou entra em Paralisia Tática, ele desperta e refaz o teste, mantendo o novo resultado.',
+    requirement: { all: [{ attribute: 'psique', min: 55 }] },
   },
   {
     id: 'memoria-eidetica',
     label: 'Memória Eidética',
     category: 'mental',
     resource: 'energia',
-    cost: 2,
-    description: 'Registro mental de cenas, rostos e sequências.',
+    cost: 1,
+    description: 'Retenção quase fotográfica de tudo o que já observou.',
     effect:
-      'Reconstrói com precisão informações observadas anteriormente, sem apoio externo.',
-    requirement: {
-      attributes: { intelecto: 55 },
-      skills: { investigacao: 25 },
-    },
+      'Ganha metade do valor da perícia relevante como bônus (limite 90%) em testes de Conhecimento, Ciência ou Tecnologia (ou Intelecto puro) para recordar senhas, plantas e documentos.',
+    requirement: { all: [{ attribute: 'intelecto', min: 60 }] },
   },
 ]
 
@@ -189,7 +229,8 @@ const equipmentCategories: readonly EquipmentCategoryDefinition[] = [
   {
     id: 'weapon',
     label: 'Armas',
-    description: 'Armamento de porte e ferramentas de impacto.',
+    description:
+      'Armamento de porte e ferramentas de impacto. Armas longas e pesadas são proibidas na criação de Nível 1; armas curtas e munição solta exigem credencial.',
   },
   {
     id: 'survival',
@@ -199,7 +240,8 @@ const equipmentCategories: readonly EquipmentCategoryDefinition[] = [
   {
     id: 'profession',
     label: 'Profissão · Civis',
-    description: 'Ferramentas de ofício e kits de apoio civil.',
+    description:
+      'Itens de ofício: entram automaticamente pela profissão contemporânea e não podem ser escolhidos nem removidos livremente.',
   },
   {
     id: 'utility',
@@ -227,24 +269,39 @@ export const MODULE_A_EQUIPMENT_CATALOG: readonly Equipment[] = [
   },
   {
     id: 'revolver-pistola',
-    label: 'Revólver / Pistola',
+    label: 'Revólver .38 / Pistola 9mm',
     category: 'weapon',
     slotCost: 1,
-    description: 'Arma de fogo curta, de porte relativamente simples.',
+    description:
+      'Arma de fogo curta, de porte relativamente simples. Exige credencial: Detetive, Policial ou Segurança Privada.',
+    requiresWeaponPermit: true,
   },
   {
     id: 'espingarda-submetralhadora',
-    label: 'Espingarda / Submetralhadora',
+    label: 'Espingarda Tática / Submetralhadora',
     category: 'weapon',
     slotCost: 2,
-    description: 'Arma longa ou automática que exige transporte dedicado.',
+    description:
+      'Arma longa ou automática que exige transporte dedicado. Proibida na criação de ficha de Nível 1.',
+    creationBlocked: true,
   },
   {
     id: 'fuzil',
-    label: 'Fuzil',
+    label: 'Fuzil de Assalto',
     category: 'weapon',
     slotCost: 3,
-    description: 'Arma de alto alcance; volumosa e difícil de dissimular.',
+    description:
+      'Arma de alto alcance; volumosa e difícil de dissimular. Proibida na criação de ficha de Nível 1.',
+    creationBlocked: true,
+  },
+  {
+    id: 'municao-solta',
+    label: 'Caixas de Munição Solta',
+    category: 'weapon',
+    slotCost: 1,
+    description:
+      'Munição de reposição sem arma vinculada. Restrita a portadores de credencial: Detetive, Policial ou Segurança Privada.',
+    requiresWeaponPermit: true,
   },
   {
     id: 'lanterna',
@@ -279,51 +336,79 @@ export const MODULE_A_EQUIPMENT_CATALOG: readonly Equipment[] = [
     label: 'Alicate Multifunção / Fita',
     category: 'profession',
     slotCost: 1,
-    description: 'Reparos rápidos, vedação e improviso técnico.',
+    description:
+      'Reparos rápidos, vedação e improviso técnico. Item de ofício do Eletricista / Mecânico.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['eletricista-mecanico'],
   },
   {
     id: 'kit-gazuas',
     label: 'Kit Profissional de Gazuas',
     category: 'profession',
     slotCost: 1,
-    description: 'Abertura de fechos simples sem arrombamento.',
+    description:
+      'Abertura de fechos simples sem arrombamento. Item de ofício do Chaveiro / Ladrão.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['chaveiro-ladrao'],
   },
   {
     id: 'kit-trauma',
     label: 'Kit de Trauma Avançado',
     category: 'profession',
     slotCost: 2,
-    description: 'Estabilização de ferimentos graves em campo.',
+    description:
+      'Estabilização de ferimentos graves em campo. Item de ofício do Paramédico / Enfermeiro.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['paramedico-enfermeiro'],
   },
   {
     id: 'lanterna-cabeca',
     label: 'Lanterna de Cabeça',
     category: 'profession',
     slotCost: 1,
-    description: 'Iluminação frontal que mantém as mãos livres para o trabalho.',
+    description:
+      'Iluminação frontal que mantém as mãos livres para o trabalho. Item de ofício do Eletricista / Mecânico.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['eletricista-mecanico'],
   },
   {
     id: 'lanterna-tatica',
     label: 'Lanterna Tática Pesada',
     category: 'profession',
     slotCost: 1,
-    description: 'Feixe potente e corpo reforçado para patrulhamento.',
+    description:
+      'Feixe potente e corpo reforçado para patrulhamento. Item de ofício da Segurança Privada.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['seguranca-privada'],
   },
   {
     id: 'tranquilizantes',
     label: 'Tranquilizantes (Tarja Preta)',
     category: 'profession',
-    slotCost: 0,
-    description: 'Medicação controlada de uso emergencial.',
+    slotCost: 1, 
+    description: 'Medicação controlada de uso emergencial. Item de ofício do Psicólogo.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['psicologo'],
   },
   {
     id: 'mochila-alta-capacidade',
     label: 'Mochila de Alta Capacidade',
-    category: 'utility',
+    category: 'profession', 
     slotCost: 0,
-    description: 'Compartimentos reforçados que ampliam a carga útil.',
+    description: 'Compartimentos reforçados que ampliam a carga útil. Item de ofício do Entregador / Atleta.',
     effect: `+${MODULE_A_BACKPACK_SLOT_BONUS} slots no limite máximo de carga.`,
     slotBonus: MODULE_A_BACKPACK_SLOT_BONUS,
+    isExclusiveToProfession: true, 
+    grantedByProfessionIds: ['entregador-atleta'],
+  },
+  {
+    id: 'estimulantes-energeticos',
+    label: 'Estimulantes Energéticos',
+    category: 'profession',
+    slotCost: 1,
+    description: 'Doses de bolso para sustentar esforço prolongado. Item de ofício do Entregador / Atleta.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['entregador-atleta'],
   },
   {
     id: 'documentos-carteira',
@@ -344,14 +429,10 @@ export const MODULE_A_EQUIPMENT_CATALOG: readonly Equipment[] = [
     label: 'Fita Isolante',
     category: 'utility',
     slotCost: 0,
-    description: 'Vedação elétrica e reparos rápidos de bolso.',
-  },
-  {
-    id: 'estimulantes-energeticos',
-    label: 'Estimulantes Energéticos',
-    category: 'utility',
-    slotCost: 0,
-    description: 'Doses de bolso para sustentar esforço prolongado.',
+    description:
+      'Vedação elétrica e reparos rápidos de bolso. Item de ofício do Eletricista / Mecânico.',
+    isExclusiveToProfession: true,
+    grantedByProfessionIds: ['eletricista-mecanico'],
   },
 ]
 
@@ -456,44 +537,6 @@ const baseSkills: readonly SkillDefinition[] = [
     description: 'Orientar-se, rastrear e resistir a ambientes hostis.',
     attribute: 'fisico',
     category: 'base',
-  },
-]
-
-const moduleSkills: readonly SkillDefinition[] = [
-  {
-    id: 'analise-de-cena',
-    label: 'Análise de Cena',
-    description: 'Reconstruir ocorrências a partir do estado do local.',
-    attribute: 'intelecto',
-    category: 'module',
-  },
-  {
-    id: 'interrogatorio',
-    label: 'Interrogatório',
-    description: 'Extrair informação consistente de depoimentos.',
-    attribute: 'psique',
-    category: 'module',
-  },
-  {
-    id: 'conducao',
-    label: 'Condução',
-    description: 'Perseguir, manobrar e operar veículos sob pressão.',
-    attribute: 'destreza',
-    category: 'module',
-  },
-  {
-    id: 'manuseio-de-evidencias',
-    label: 'Manuseio de Evidências',
-    description: 'Coletar, preservar e transportar material sensível.',
-    attribute: 'intelecto',
-    category: 'module',
-  },
-  {
-    id: 'protocolo-de-campo',
-    label: 'Protocolo de Campo',
-    description: 'Coordenar procedimentos de contenção e registro em campo.',
-    attribute: 'psique',
-    category: 'module',
   },
 ]
 
@@ -632,8 +675,8 @@ const derivedStats: readonly DerivedStatDefinition[] = [
     key: 'energia',
     label: 'Energia Mental',
     abbreviation: 'EM',
-    description: 'Reserva mental de uso diário. Fórmula: PSI / 10.',
-    calculate: (attributes) => Math.floor(attributes.psique / 10),
+    description: 'Reserva mental de uso diário. Fórmula: (INT + PSI) / 20.',
+    calculate: (attributes) => Math.floor((attributes.intelecto + attributes.psique) / 20),
   },
 ]
 
@@ -643,7 +686,7 @@ const steps: readonly WizardStepDefinition[] = [
     label: 'Identidade',
     title: 'Identidade & Arquétipo',
     description:
-      'Registre o nome do personagem e escolha o arquétipo. Personagens Civis escolhem também a profissão contemporânea, que define o atributo principal, o bônus de +10 fora do pool e o pré-requisito da etapa de Atributos.',
+      'Registre o nome do personagem e escolha o arquétipo. Personagens Civis escolhem também a profissão contemporânea, que define o atributo principal, o bônus de +10 fora do pool, o pré-requisito da etapa de Atributos e o Motivo de Presença.',
   },
   {
     id: 'attributes',
@@ -652,16 +695,22 @@ const steps: readonly WizardStepDefinition[] = [
     description: `Cada atributo parte de ${MODULE_A_ATTRIBUTE_BASE}. Distribua exatamente ${MODULE_A_ATTRIBUTE_POOL} pontos, respeitando o teto final de ${MODULE_A_ATTRIBUTE_MAX} por atributo (bônus incluídos). Civis precisam levar o atributo principal da profissão ao pré-requisito exigido, já contando o bônus de +${MODULE_A_CIVIL_PROFESSION_ATTRIBUTE_BONUS}.`,
   },
   {
-    id: 'general-skills',
-    label: 'Habilidades',
-    title: 'Habilidades Gerais',
-    description: `Escolha até ${MODULE_A_GENERAL_SKILL_MAX_CHOICES} habilidades gerais. Habilidades físicas gastam ST e mentais gastam EM. Cada vaga não preenchida concede +${MODULE_A_GENERAL_SKILL_POOL_BONUS} pontos no pool de perícias.`,
-  },
-  {
     id: 'skills',
     label: 'Perícias',
     title: 'Distribuição de Perícias',
-    description: `O valor base de cada perícia é metade do atributo correspondente. Invista o pool de ${MODULE_A_SKILL_POOL} pontos — ampliado em +${MODULE_A_GENERAL_SKILL_POOL_BONUS} por habilidade geral não escolhida — com teto de ${MODULE_A_SKILL_MAX_RANK} pontos por perícia; atingir o teto concede +${MODULE_A_SKILL_BONUS_AT_MAX} pontos de pool.`,
+    description: `O valor base de cada perícia é metade do atributo correspondente. Invista o pool de ${MODULE_A_SKILL_POOL} pontos respeitando o teto final de ${MODULE_A_SKILL_MAX_RANK} por perícia (base + investimento), o que limita o investimento manual a ${MODULE_A_SKILL_MAX_RANK} menos o valor base; perícias de combate do Civil têm teto final de ${MODULE_A_CIVIL_COMBAT_MAX}. Atingir o teto final concede +${MODULE_A_SKILL_BONUS_AT_MAX} pontos de pool. As habilidades gerais são escolhidas depois, com os valores finais já definidos.`,
+  },
+  {
+    id: 'general-skills',
+    label: 'Habilidades',
+    title: 'Habilidades Gerais',
+    description: `Escolha até ${MODULE_A_GENERAL_SKILL_MAX_CHOICES} habilidades gerais. Habilidades físicas e de combate gastam ST; mentais e de suporte gastam EM. Os pré-requisitos são cobrados sobre os atributos e perícias finais. Cada vaga não preenchida concede +${MODULE_A_GENERAL_SKILL_FREE_SLOT_BONUS} pontos em uma perícia na etapa seguinte.`,
+  },
+  {
+    id: 'free-skill-bonus',
+    label: 'Bônus',
+    title: 'Bônus de Vagas Livres',
+    description: `Cada habilidade geral não escolhida concede +${MODULE_A_GENERAL_SKILL_FREE_SLOT_BONUS} pontos diretos em uma perícia do seu personagem. O bônus entra no valor final, fora do pool, mas respeita o teto vigente da perícia. Etapa universal: obrigatória para Detetive, Policial e Civil sempre que houver vaga livre; dispensada quando as duas habilidades forem escolhidas.`,
   },
   {
     id: 'anchors',
@@ -673,7 +722,7 @@ const steps: readonly WizardStepDefinition[] = [
     id: 'equipment',
     label: 'Equipamentos',
     title: 'Equipamentos & Inventário',
-    description: `Cada item consome slots de carga. A capacidade é floor(FÍSICO / ${MODULE_A_SLOT_ATTRIBUTE_STEP}) + ${MODULE_A_BASE_SLOTS}, ampliada em +${MODULE_A_BACKPACK_SLOT_BONUS} com a mochila de alta capacidade.`,
+    description: `Cada item consome slots de carga. A capacidade é floor(FÍSICO / ${MODULE_A_SLOT_ATTRIBUTE_STEP}) + ${MODULE_A_BASE_SLOTS}, ampliada em +${MODULE_A_BACKPACK_SLOT_BONUS} com a mochila de alta capacidade. Armas longas/pesadas são proibidas; armas curtas e munição solta exigem credencial; itens de ofício entram apenas pela profissão.`,
   },
   {
     id: 'review',
@@ -711,17 +760,17 @@ export const moduleA: ModuleRules = {
       {
         skillIds: MODULE_A_COMBAT_SKILL_IDS,
         archetypeIds: ['civil'],
-        maxRatio: MODULE_A_CIVIL_COMBAT_RATIO,
+        maxLimit: MODULE_A_CIVIL_COMBAT_MAX,
       },
     ],
   },
   attributes,
-  skills: [...baseSkills, ...moduleSkills],
+  skills: baseSkills,
   archetypes,
   derivedStats,
   generalSkillRules: {
     maxChoices: MODULE_A_GENERAL_SKILL_MAX_CHOICES,
-    poolBonusPerUnchosen: MODULE_A_GENERAL_SKILL_POOL_BONUS,
+    freeSlotBonusPerSlot: MODULE_A_GENERAL_SKILL_FREE_SLOT_BONUS,
   },
   generalSkills: MODULE_A_GENERAL_SKILL_CATALOG,
   generalSkillCategories,
@@ -736,6 +785,8 @@ export const moduleA: ModuleRules = {
     slotsPerAttributeStep: MODULE_A_SLOT_ATTRIBUTE_STEP,
     baseSlots: MODULE_A_BASE_SLOTS,
     backpackBonus: MODULE_A_BACKPACK_SLOT_BONUS,
+    weaponPermitArchetypeIds: MODULE_A_WEAPON_PERMIT_ARCHETYPE_IDS,
+    weaponPermitProfessionIds: MODULE_A_WEAPON_PERMIT_PROFESSION_IDS,
   },
   equipmentCategories,
   equipmentCatalog: MODULE_A_EQUIPMENT_CATALOG,

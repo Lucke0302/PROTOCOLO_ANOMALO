@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
-import type { ModuleRules } from '../../types/character'
+import type { ModuleRules, WizardStepDefinition } from '../../types/character'
 import { StepIndicator } from '../wizard/StepIndicator'
 
 interface LayoutProps {
   module: ModuleRules
+  steps: readonly WizardStepDefinition[]
   stepIndex: number
   children: ReactNode
 }
 
-export function Layout({ module, stepIndex, children }: LayoutProps) {
+export function Layout({ module, steps, stepIndex, children }: LayoutProps) {
   return (
     <div className="flex min-h-screen flex-col bg-white text-black">
       <header className="no-print border-b border-black">
@@ -40,7 +41,7 @@ export function Layout({ module, stepIndex, children }: LayoutProps) {
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-        <StepIndicator steps={module.steps} currentIndex={stepIndex} />
+        <StepIndicator steps={steps} currentIndex={stepIndex} />
         <div className="mt-8">{children}</div>
       </main>
 

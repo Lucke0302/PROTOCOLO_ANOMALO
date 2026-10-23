@@ -9,7 +9,7 @@ interface StepIndicatorProps {
 export function StepIndicator({ steps, currentIndex }: StepIndicatorProps) {
   return (
     <nav aria-label="Etapas de criação" className="no-print">
-      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         {steps.map((step, index) => {
           const isActive = index === currentIndex
           const isComplete = index < currentIndex

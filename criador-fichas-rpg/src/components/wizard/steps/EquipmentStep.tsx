@@ -7,8 +7,11 @@ import {
   getCarryCapacity,
   getDraftProfession,
   getEffectiveEquipments,
+  getEquipmentRestriction,
   getProfessionEquipment,
+  getWizardSteps,
 } from '../../../lib/characterRules'
+import { createEquipmentSchema } from '../../../lib/validation'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { Button } from '../../ui/Button'
 import { StepHeader } from '../StepHeader'
@@ -23,7 +26,7 @@ export function EquipmentStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
   const archetype = getArchetype(rules, draft.archetypeId)
   const finalAttributes = applyAttributeBonuses(
     rules,
@@ -40,6 +43,13 @@ export function EquipmentStep() {
   const professionItems = getProfessionEquipment(draft, rules)
   const grantedIds = new Set(professionItems.map((item) => item.id))
   const equipments = getEffectiveEquipments(draft, rules)
+  const equipmentValidation = createEquipmentSchema(rules, draft).safeParse({
+    equipmentIds: draft.equipments.map((item) => item.id),
+  })
+  const equipmentIssues = equipmentValidation.success
+    ? []
+    : equipmentValidation.error.issues.map((issue) => issue.message)
+  const hasRestrictionIssues = equipmentIssues.length > 0
   const remainingSlots = carry.maxSlots - carry.usedSlots
   const isOverloaded = remainingSlots < 0
   const hasBackpack = carry.bonusSlots > 0
@@ -136,6 +146,17 @@ export function EquipmentStep() {
           </p>
         ) : null}
 
+        {hasRestrictionIssues ? (
+          <div
+            role="alert"
+            className="space-y-1 border border-navy-blue bg-navy-blue-50 px-3 py-2 text-xs text-navy-blue"
+          >
+            {equipmentIssues.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+          </div>
+        ) : null}
+
         {rules.equipmentCategories.map((category) => {
           const items = rules.equipmentCatalog.filter(
             (item) => item.category === category.id,
@@ -170,13 +191,18 @@ export function EquipmentStep() {
                     (equipped) => equipped.id === item.id,
                   )
                   const isGranted = grantedIds.has(item.id)
+                  const restriction = getEquipmentRestriction(item, draft, rules)
+                  const isRestricted = !restriction.allowed
                   const canAdd = canEquipItem(
                     item,
                     finalAttributes,
                     equipments,
                     rules.equipmentRules,
                   )
-                  const isBlocked = !isEquipped && !canAdd
+                  const isBlocked = !isEquipped && (isRestricted || !canAdd)
+                  const blockReason = isRestricted
+                    ? (restriction.reason ?? undefined)
+                    : 'Slots insuficientes para este item.'
 
                   return (
                     <li
@@ -206,6 +232,11 @@ export function EquipmentStep() {
                             {item.effect}
                           </p>
                         ) : null}
+                        {isRestricted ? (
+                          <p className="mt-1.5 border-l-2 border-navy-blue pl-2 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] text-navy-blue">
+                            {restriction.tag} · {restriction.reason}
+                          </p>
+                        ) : null}
                       </div>
 
                       {isEquipped ? (
@@ -231,15 +262,15 @@ export function EquipmentStep() {
                           onClick={() => addEquipment(item)}
                           disabled={isBlocked}
                           aria-label={`Adicionar ${item.label}`}
-                          title={
-                            isBlocked
-                              ? 'Slots insuficientes para este item.'
-                              : undefined
-                          }
+                          title={isBlocked ? blockReason : undefined}
                           className="w-full px-2 py-1.5 text-[10px]"
                           icon={<Plus className="h-3 w-3" aria-hidden="true" />}
                         >
-                          {isBlocked ? 'Sem slots' : 'Adicionar'}
+                          {isRestricted
+                            ? 'Bloqueado'
+                            : isBlocked
+                              ? 'Sem slots'
+                              : 'Adicionar'}
                         </Button>
                       )}
                     </li>
@@ -257,6 +288,14 @@ export function EquipmentStep() {
               {carry.usedSlots}/{carry.maxSlots} slots
             </span>
           </div>
+
+          {professionItems.length > 0 ? (
+            <p className="mb-3 border border-navy-blue bg-navy-blue-50 px-3 py-2 text-[11px] leading-snug text-navy-blue">
+              {professionItems.length} item(ns) de ofício concedido(s) pela
+              profissão entram automaticamente no inventário e não podem ser
+              removidos.
+            </p>
+          ) : null}
 
           {equipments.length > 0 ? (
             <ul className="divide-y divide-gray-200 border border-gray-300">
@@ -308,13 +347,15 @@ export function EquipmentStep() {
         <WizardFooter
           onBack={previousStep}
           nextLabel="Revisar ficha"
-          nextDisabled={isOverloaded}
+          nextDisabled={isOverloaded || hasRestrictionIssues}
           hint={
-            isOverloaded
-              ? 'Remova itens até a carga caber no limite de slots.'
-              : equipments.length === 0
-                ? 'Inventário vazio é permitido. Avance para revisar a ficha.'
-                : `Carga dentro do limite: ${remainingSlots} slot(s) livre(s).`
+            hasRestrictionIssues
+              ? 'Remova os itens bloqueados: armas longas/pesadas, itens de ofício de outra profissão ou porte sem credencial.'
+              : isOverloaded
+                ? 'Remova itens até a carga caber no limite de slots.'
+                : equipments.length === 0
+                  ? 'Inventário vazio é permitido. Avance para revisar a ficha.'
+                  : `Carga dentro do limite: ${remainingSlots} slot(s) livre(s).`
           }
         />
       </form>

@@ -8,6 +8,8 @@ import {
   isArchetypeId,
   isAttributeKey,
   isCivilProfessionId,
+  getWizardSteps,
+  PRESENCE_REASON_MIN_LENGTH,
 } from '../../../lib/characterRules'
 import {
   createIdentitySchema,
@@ -28,7 +30,7 @@ export function IdentityStep() {
   const previousStep = useCharacterStore((state) => state.previousStep)
 
   const rules = getModule(draft.moduleId)
-  const step = rules.steps[stepIndex]
+  const step = getWizardSteps(draft, rules)[stepIndex]
 
   const {
     control,
@@ -44,6 +46,7 @@ export function IdentityStep() {
       professionId: draft.professionId ?? '',
       professionSkillChoice: draft.professionSkillChoice ?? '',
       professionAttributeChoice: draft.professionAttributeChoice ?? '',
+      presenceReason: draft.presenceReason,
     },
     mode: 'onTouched',
   })
@@ -130,6 +133,7 @@ export function IdentityStep() {
       professionAttributeChoice: keepsAttributeChoice
         ? (values.professionAttributeChoice as AttributeKey)
         : null,
+      presenceReason: isCivil ? values.presenceReason.trim() : '',
     })
     nextStep()
   })
@@ -194,6 +198,7 @@ export function IdentityStep() {
                   setValue('professionId', '')
                   setValue('professionSkillChoice', '')
                   setValue('professionAttributeChoice', '')
+                  setValue('presenceReason', '')
                 }}
                 onBlur={field.onBlur}
                 name={field.name}
@@ -205,41 +210,86 @@ export function IdentityStep() {
         </fieldset>
 
         {isCivil ? (
-          <ProfessionSelector
-            professions={rules.civilProfessions}
-            attributes={rules.attributes}
-            skills={rules.skills}
-            equipmentCatalog={rules.equipmentCatalog}
-            selectedId={
-              isCivilProfessionId(professionId, rules) ? professionId : null
-            }
-            selectedSkill={
-              professionSkillChoice === '' ? null : (professionSkillChoice as SkillId)
-            }
-            selectedAttribute={
-              professionAttributeChoice === ''
-                ? null
-                : (professionAttributeChoice as AttributeKey)
-            }
-            onSelect={(next) => {
-              setValue('professionId', next, { shouldValidate: true })
-              setValue('professionSkillChoice', '')
-              setValue('professionAttributeChoice', '')
-            }}
-            onSelectSkill={(next) =>
-              setValue('professionSkillChoice', next, { shouldValidate: true })
-            }
-            onSelectAttribute={(next) =>
-              setValue('professionAttributeChoice', next, {
-                shouldValidate: true,
-              })
-            }
-            errors={{
-              profession: professionErrors.profession,
-              skill: professionErrors.skill,
-              attribute: professionErrors.attribute,
-            }}
-          />
+          <>
+            <div className="panel p-5">
+              <label htmlFor="presence-reason" className="label-micro">
+                Motivo de Presença
+              </label>
+              <p className="mt-1 max-w-2xl text-xs leading-snug text-gray-500">
+                Explique por que este civil se envolve com ocorrências
+                anômalas. Campo obrigatório para o arquétipo Civil.
+              </p>
+              <textarea
+                id="presence-reason"
+                rows={3}
+                maxLength={280}
+                placeholder="Ex.: fazia entregas no prédio quando o surto começou."
+                aria-invalid={errors.presenceReason ? true : undefined}
+                aria-describedby={
+                  errors.presenceReason
+                    ? 'presence-reason-error'
+                    : 'presence-reason-hint'
+                }
+                className="mt-2 w-full resize-y border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-navy-blue focus:ring-1 focus:ring-navy-blue"
+                {...register('presenceReason')}
+              />
+              {errors.presenceReason ? (
+                <p
+                  id="presence-reason-error"
+                  role="alert"
+                  className="mt-2 text-xs text-navy-blue"
+                >
+                  {errors.presenceReason.message}
+                </p>
+              ) : (
+                <p
+                  id="presence-reason-hint"
+                  className="mt-2 text-[11px] text-gray-500"
+                >
+                  Entre {PRESENCE_REASON_MIN_LENGTH} e 280 caracteres. O texto
+                  entra na ficha final e no JSON exportado.
+                </p>
+              )}
+            </div>
+
+            <ProfessionSelector
+              professions={rules.civilProfessions}
+              attributes={rules.attributes}
+              skills={rules.skills}
+              equipmentCatalog={rules.equipmentCatalog}
+              selectedId={
+                isCivilProfessionId(professionId, rules) ? professionId : null
+              }
+              selectedSkill={
+                professionSkillChoice === ''
+                  ? null
+                  : (professionSkillChoice as SkillId)
+              }
+              selectedAttribute={
+                professionAttributeChoice === ''
+                  ? null
+                  : (professionAttributeChoice as AttributeKey)
+              }
+              onSelect={(next) => {
+                setValue('professionId', next, { shouldValidate: true })
+                setValue('professionSkillChoice', '')
+                setValue('professionAttributeChoice', '')
+              }}
+              onSelectSkill={(next) =>
+                setValue('professionSkillChoice', next, { shouldValidate: true })
+              }
+              onSelectAttribute={(next) =>
+                setValue('professionAttributeChoice', next, {
+                  shouldValidate: true,
+                })
+              }
+              errors={{
+                profession: professionErrors.profession,
+                skill: professionErrors.skill,
+                attribute: professionErrors.attribute,
+              }}
+            />
+          </>
         ) : null}
 
         <WizardFooter
@@ -247,7 +297,7 @@ export function IdentityStep() {
           nextLabel="Avançar para atributos"
           hint={
             isCivil
-              ? 'O avanço exige nome, arquétipo, profissão, perícia bonificada e atributo principal (quando flexível). O pré-requisito é conferido na etapa seguinte.'
+              ? `O avanço exige nome, arquétipo, motivo de presença (${PRESENCE_REASON_MIN_LENGTH}+ caracteres), profissão, perícia bonificada e atributo principal (quando flexível). O pré-requisito é conferido na etapa seguinte.`
               : 'O avanço só é liberado com nome válido e um arquétipo selecionado.'
           }
         />

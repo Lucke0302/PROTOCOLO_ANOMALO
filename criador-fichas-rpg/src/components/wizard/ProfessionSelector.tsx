@@ -137,7 +137,7 @@ export function ProfessionSelector({
                     {bonusSkillsLabel}
                   </span>
                   <span className="mt-1 block font-mono text-[9px] uppercase tracking-[0.1em] text-gray-500">
-                    Itens: {itemsLabel}
+                    Itens de ofício automáticos (não removíveis): {itemsLabel}
                   </span>
                 </span>
               </label>

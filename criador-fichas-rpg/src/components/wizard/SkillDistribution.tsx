@@ -15,9 +15,9 @@ interface SkillDistributionProps {
   attributes: readonly AttributeDefinition[]
   /** Valor base de cada perícia: floor(atributo correspondente / 2). */
   baseValues: SkillRanks
-  /** Teto de pontos investidos por perícia. */
+  /** Teto de pontos investidos por perícia (teto final absoluto - base). */
   caps: SkillRanks
-  /** Teto que concede bônus de pool ao ser atingido. */
+  /** Teto final absoluto que concede bônus de pool ao ser atingido. */
   bonusThreshold: number
   bonusAtMax: number
   remaining: number
@@ -49,7 +49,8 @@ export function SkillDistribution({
           skill.id === professionSkillId ? professionBonus : 0
         const base = baseValues[skill.id] ?? 0
         const cap = caps[skill.id] ?? 0
-        const reducedCap = cap < bonusThreshold
+        const totalCap = base + cap
+        const reducedCap = totalCap < bonusThreshold
         const attribute = attributes.find(
           (definition) => definition.key === skill.attribute,
         )
@@ -79,7 +80,7 @@ export function SkillDistribution({
                 ) : null}
                 {reducedCap ? (
                   <span className="border border-gray-400 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-gray-600">
-                    teto {cap}
+                    teto {totalCap}
                   </span>
                 ) : null}
               </div>
@@ -94,7 +95,7 @@ export function SkillDistribution({
                 const total = base + invested + bonus + professionSkillBonus
                 const available = Math.max(0, remaining)
                 const maxAllowed = Math.min(cap, invested + available)
-                const reachedBonus = invested >= bonusThreshold
+                const reachedBonus = base + invested >= bonusThreshold
 
                 const commit = (next: number) => {
                   field.onChange(

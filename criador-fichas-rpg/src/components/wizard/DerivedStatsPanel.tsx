@@ -1,4 +1,7 @@
-import { getAnchorPointsTotal, getGeneralSkillPoolBonus } from '../../lib/characterRules'
+import {
+  getAnchorPointsTotal,
+  getFreeSkillBonusTotal,
+} from '../../lib/characterRules'
 import type {
   Anchor,
   DerivedStats,
@@ -52,8 +55,8 @@ export function DerivedStatsPanel({
           </div>
           <p className="mt-2 text-xs font-medium">Habilidades gerais</p>
           <p className="mt-1 text-[11px] leading-snug text-gray-500">
-            +{getGeneralSkillPoolBonus(generalSkills.length, rules)} pontos de
-            pool por vagas não preenchidas.
+            +{getFreeSkillBonusTotal(generalSkills.length, rules)} pontos em
+            perícias pelas vagas não preenchidas.
           </p>
           {generalSkills.length > 0 ? (
             <ul className="mt-2 space-y-1">
@@ -64,6 +67,7 @@ export function DerivedStatsPanel({
                 >
                   {skill.label} · {skill.cost}{' '}
                   {skill.resource === 'estamina' ? 'ST' : 'EM'}
+                  {skill.costNote ? ` · ${skill.costNote}` : ''}
                 </li>
               ))}
             </ul>

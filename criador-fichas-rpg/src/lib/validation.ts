@@ -5,19 +5,26 @@ import {
   getAnchorPointsTotal,
   getCivilProfession,
   getAttributeCaps,
+  getEquipmentLoadoutIssues,
+  getFreeSkillBonusIssues,
+  getFreeSkillBonusSlots,
   getProfessionAttributeRequirement,
   getProfessionPrimaryAttribute,
   getProfessionSkillId,
+  getSkillBaseValues,
   getSkillCaps,
   getTotalSkillPool,
+  PRESENCE_REASON_MIN_LENGTH,
 } from './characterRules'
 import type {
   Anchor,
   ArchetypeDefinition,
   AttributeKey,
   Attributes,
+  CharacterDraft,
   CivilProfession,
   CivilProfessionId,
+  Equipment,
   ModuleRules,
   SkillId,
   SkillRanks,
@@ -29,11 +36,20 @@ export type IdentityFormValues = {
   professionId: string
   professionSkillChoice: string
   professionAttributeChoice: string
+  presenceReason: string
 }
 
 export type AttributesFormValues = Attributes
 
 export type SkillsFormValues = SkillRanks
+
+export type FreeSkillBonusFormValues = {
+  picks: string[]
+}
+
+export type EquipmentFormValues = {
+  equipmentIds: string[]
+}
 
 export type AnchorsFormValues = {
   anchors: Anchor[]
@@ -68,6 +84,10 @@ export function createIdentitySchema(rules: ModuleRules) {
       professionId: z.string(),
       professionSkillChoice: z.string(),
       professionAttributeChoice: z.string(),
+      presenceReason: z
+        .string()
+        .trim()
+        .max(280, { message: 'Use no máximo 280 caracteres.' }),
     })
     .superRefine((values, context) => {
       const archetype = rules.archetypes.find(
@@ -76,6 +96,14 @@ export function createIdentitySchema(rules: ModuleRules) {
 
       if (!archetype || archetype.id !== 'civil') return
       if (rules.civilProfessions.length === 0) return
+
+      if (values.presenceReason.length < PRESENCE_REASON_MIN_LENGTH) {
+        context.addIssue({
+          code: 'custom',
+          path: ['presenceReason'],
+          message: `Descreva o motivo de presença com pelo menos ${PRESENCE_REASON_MIN_LENGTH} caracteres.`,
+        })
+      }
 
       const profession = getCivilProfession(
         rules,
@@ -204,41 +232,48 @@ export function createAttributesSchema(
 }
 
 /**
- * Etapa 3: pontos investidos entre 0 e o teto da perícia (que pode ser
- * reduzido por arquétipo) e pool total distribuído por completo. Perícias no
- * teto concedem bônus de pool, por isso o total esperado é dinâmico.
+ * Etapa 3: pontos investidos entre 0 e o teto de INVESTIMENTO de cada perícia
+ * (teto final absoluto menos o valor base do atributo, podendo ser reduzido por
+ * arquétipo) e pool total distribuído por completo. Perícias no teto final
+ * concedem bônus de pool, por isso o total esperado é dinâmico.
  * O shape é construído a partir do módulo, permitindo que o Módulo B tenha
  * um conjunto próprio de perícias sem alterar este arquivo.
  */
 export function createSkillsSchema(
   rules: ModuleRules,
-  archetype: ArchetypeDefinition | null = null,
-  chosenGeneralSkills = 0,
+  archetype: ArchetypeDefinition | null,
+  attributes: Attributes,
 ) {
-  const caps = getSkillCaps(rules, archetype)
+  const caps = getSkillCaps(rules, archetype, attributes)
+  const baseValues = getSkillBaseValues(rules, attributes)
 
   const shape: Record<string, z.ZodNumber> = {}
   for (const skill of rules.skills) {
     const cap = caps[skill.id]
+    const totalCap = cap + (baseValues[skill.id] ?? 0)
 
     shape[skill.id] = z
       .number()
       .int({ message: 'Use apenas valores inteiros.' })
       .min(0, { message: 'O mínimo é 0 ponto.' })
-      .max(cap, { message: `O teto desta perícia é ${cap} pontos.` })
+      .max(cap, {
+        message: `O teto desta perícia é ${cap} ponto(s) investido(s) (valor final máximo ${totalCap}).`,
+      })
   }
 
   return z
     .object(shape)
     .superRefine((values, context) => {
+      // Inputs numéricos do HTML podem devolver strings ("10"): sem o casting
+      // matemático a soma concatenaria e o pool pendente ficaria irreal.
       const spent = Object.values(values).reduce(
-        (total, rank) => total + rank,
+        (total, rank) => total + (Number(rank) || 0),
         0,
       )
       const totalPool = getTotalSkillPool(
         values as SkillRanks,
         rules,
-        chosenGeneralSkills,
+        attributes,
       )
       const remaining = totalPool - spent
 
@@ -253,6 +288,102 @@ export function createSkillsSchema(
         })
       }
     }) as unknown as z.ZodType<SkillRanks, SkillRanks>
+}
+
+/**
+ * Etapa de bônus de vagas livres: exatamente uma perícia por vaga aberta
+ * (nenhuma quando as duas habilidades gerais foram escolhidas), sem
+ * ultrapassar o teto vigente de cada perícia. Universal a Detetive, Policial e
+ * Civil — o pool é sempre (2 - escolhidas) * 10.
+ */
+export function createFreeSkillBonusSchema(
+  rules: ModuleRules,
+  draft: CharacterDraft,
+) {
+  const slots = getFreeSkillBonusSlots(draft.generalSkills.length, rules)
+  const perSlot = rules.generalSkillRules.freeSlotBonusPerSlot
+  const skillIds: readonly string[] = rules.skills.map((skill) => skill.id)
+
+  return z
+    .object({
+      picks: z.array(z.string()).length(slots, {
+        message:
+          slots === 0
+            ? 'Nenhuma vaga livre: não há pontos de bônus a distribuir.'
+            : `Distribua exatamente ${slots * perSlot} pontos: selecione ${slots} perícia(s) bonificada(s).`,
+      }),
+    })
+    .superRefine((values, context) => {
+      const unknown = values.picks.filter(
+        (skillId) => !skillIds.includes(skillId),
+      )
+
+      for (const skillId of unknown) {
+        context.addIssue({
+          code: 'custom',
+          path: ['picks'],
+          message: `Perícia desconhecida: ${skillId}.`,
+        })
+      }
+
+      if (unknown.length > 0 || values.picks.length !== slots) return
+
+      const issues = getFreeSkillBonusIssues(
+        { ...draft, freeSkillBonusPicks: values.picks as SkillId[] },
+        rules,
+      )
+
+      for (const message of issues) {
+        context.addIssue({ code: 'custom', path: ['picks'], message })
+      }
+    }) as unknown as z.ZodType<FreeSkillBonusFormValues, FreeSkillBonusFormValues>
+}
+
+/**
+ * Etapa de Equipamentos: os itens escolhidos precisam existir no catálogo e
+ * respeitar as restrições de criação (armas longas/pesadas proibidas no Nível 1,
+ * itens de ofício exclusivos da profissão concedente e credencial de porte).
+ * Os itens da profissão são derivados do rascunho e não passam por aqui.
+ */
+export function createEquipmentSchema(
+  rules: ModuleRules,
+  draft: CharacterDraft,
+) {
+  return z
+    .object({ equipmentIds: z.array(z.string()) })
+    .superRefine((values, context) => {
+      const items: Equipment[] = []
+
+      for (const id of values.equipmentIds) {
+        const item = rules.equipmentCatalog.find(
+          (catalogItem) => catalogItem.id === id,
+        )
+
+        if (!item) {
+          context.addIssue({
+            code: 'custom',
+            path: ['equipmentIds'],
+            message: `Item desconhecido no catálogo: ${id}.`,
+          })
+          continue
+        }
+
+        items.push(item)
+      }
+
+      const issues = getEquipmentLoadoutIssues(
+        { ...draft, equipments: items },
+        rules,
+      )
+
+      for (const message of issues) {
+        context.addIssue({
+          code: 'custom',
+          path: ['equipmentIds'],
+          message,
+        })
+      }
+    }) as unknown as z.ZodType<EquipmentFormValues, EquipmentFormValues>
 }
 
 /**
