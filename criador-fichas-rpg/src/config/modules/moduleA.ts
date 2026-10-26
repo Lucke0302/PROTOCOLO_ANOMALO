@@ -10,6 +10,7 @@ import type {
   EquipmentCategoryDefinition,
   GeneralSkill,
   GeneralSkillCategoryDefinition,
+  InitialDisturbanceDefinition,
   ModuleRules,
   SkillDefinition,
   SkillId,
@@ -93,6 +94,44 @@ export const MODULE_A_ANCHOR_COUNT = 3
 export const MODULE_A_ANCHOR_BASE_POINTS = 20
 export const MODULE_A_ANCHOR_MIN_POINTS = 10
 export const MODULE_A_ANCHOR_ATTRIBUTE: AttributeKey = 'psique'
+
+// Cicatrizes da Mente: com a SAN final abaixo de 50 o personagem precisa
+// registrar um distúrbio inicial na etapa de Âncoras.
+export const MODULE_A_DISTURBANCE_SANITY_THRESHOLD = 50
+
+export const MODULE_A_INITIAL_DISTURBANCES: readonly InitialDisturbanceDefinition[] =
+  [
+    {
+      id: 'paranoia',
+      label: 'Paranoia',
+      description:
+        'Toda intenção parece hostil: alianças custam mais do que o medo de estar sendo observado.',
+    },
+    {
+      id: 'fobia-especifica',
+      label: 'Fobia Específica',
+      description:
+        'Um estímulo concreto (altura, sangue, multidões, confinamento) desmonta o autocontrole.',
+    },
+    {
+      id: 'obsessao',
+      label: 'Obsessão',
+      description:
+        'Um único assunto organiza a rotina e distorce prioridades, mesmo em risco de vida.',
+    },
+    {
+      id: 'apatia',
+      label: 'Apatia',
+      description:
+        'O afeto chega embotado: reações custam o dobro e a dor alheia soa distante.',
+    },
+    {
+      id: 'amnesia-dissociativa',
+      label: 'Amnésia Dissociativa',
+      description:
+        'Blocos de tempo desaparecem do relato, deixando lacunas que outros precisam preencher.',
+    },
+  ]
 
 const generalSkillCategories: readonly GeneralSkillCategoryDefinition[] = [
   {
@@ -716,7 +755,7 @@ const steps: readonly WizardStepDefinition[] = [
     id: 'anchors',
     label: 'Âncoras',
     title: 'Âncoras Pessoais',
-    description: `Distribua exatamente PSIQUE + ${MODULE_A_ANCHOR_BASE_POINTS} pontos entre ${MODULE_A_ANCHOR_COUNT} âncoras, com no mínimo ${MODULE_A_ANCHOR_MIN_POINTS} pontos em cada uma.`,
+    description: `Distribua exatamente PSIQUE + ${MODULE_A_ANCHOR_BASE_POINTS} pontos entre ${MODULE_A_ANCHOR_COUNT} âncoras, com no mínimo ${MODULE_A_ANCHOR_MIN_POINTS} pontos em cada uma. Se a Estabilidade Mental final ficar abaixo de ${MODULE_A_DISTURBANCE_SANITY_THRESHOLD}, registre também uma Cicatriz da Mente.`,
   },
   {
     id: 'equipment',
@@ -779,6 +818,10 @@ export const moduleA: ModuleRules = {
     basePoints: MODULE_A_ANCHOR_BASE_POINTS,
     minPerAnchor: MODULE_A_ANCHOR_MIN_POINTS,
     attribute: MODULE_A_ANCHOR_ATTRIBUTE,
+  },
+  disturbanceRules: {
+    sanityThreshold: MODULE_A_DISTURBANCE_SANITY_THRESHOLD,
+    options: MODULE_A_INITIAL_DISTURBANCES,
   },
   civilProfessions: MODULE_A_CIVIL_PROFESSIONS,
   equipmentRules: {

@@ -7,6 +7,7 @@ import {
   createInitialDraft,
   getCivilProfession,
   getFreeSkillBonusSlots,
+  getInitialDisturbance,
   getSanitizedEquipments,
   getWizardSteps,
   isProfessionEquipment,
@@ -46,6 +47,8 @@ interface CharacterStore {
   /** Define a perícia bonificada de uma vaga livre (`null` limpa a vaga). */
   setFreeSkillBonusPick: (index: number, skillId: SkillId | null) => void
   setAnchors: (anchors: Anchor[]) => void
+  /** Cicatriz da Mente escolhida na etapa de Âncoras (`null` limpa o campo). */
+  setInitialDisturbance: (disturbanceId: string | null) => void
   addEquipment: (item: Equipment) => void
   removeEquipment: (itemId: string) => void
   goToStep: (index: number) => void
@@ -89,6 +92,7 @@ export const useCharacterStore = create<CharacterStore>()((set, get) => ({
     set({
       draft: {
         ...nextDraft,
+        initialDisturbance: getInitialDisturbance(nextDraft, rules),
         equipments: getSanitizedEquipments(nextDraft, rules),
       },
     })
@@ -138,15 +142,25 @@ export const useCharacterStore = create<CharacterStore>()((set, get) => ({
     set({
       draft: {
         ...nextDraft,
+        initialDisturbance: getInitialDisturbance(nextDraft, rules),
         equipments: getSanitizedEquipments(nextDraft, rules),
       },
     })
   },
 
+  // A PSIQUE pode mudar (distribuição, arquétipo ou profissão): se a SAN subir
+  // até o limite do módulo, o distúrbio inicial deixa de existir no rascunho.
   setAttributes: (attributes) =>
-    set((state) => ({
-      draft: { ...state.draft, attributes },
-    })),
+    set((state) => {
+      const rules = getModule(state.draft.moduleId)
+      const nextDraft: CharacterDraft = { ...state.draft, attributes }
+      return {
+        draft: {
+          ...nextDraft,
+          initialDisturbance: getInitialDisturbance(nextDraft, rules),
+        },
+      }
+    }),
 
   setSkills: (skills) =>
     set((state) => ({
@@ -242,6 +256,23 @@ export const useCharacterStore = create<CharacterStore>()((set, get) => ({
         anchors: anchors.map((anchor) => ({ ...anchor })),
       },
     })),
+
+  // O distúrbio só persiste enquanto a SAN final estiver abaixo do limite do
+  // módulo; qualquer valor inválido é descartado pela regra central.
+  setInitialDisturbance: (disturbanceId) =>
+    set((state) => {
+      const rules = getModule(state.draft.moduleId)
+      const nextDraft: CharacterDraft = {
+        ...state.draft,
+        initialDisturbance: disturbanceId,
+      }
+      return {
+        draft: {
+          ...nextDraft,
+          initialDisturbance: getInitialDisturbance(nextDraft, rules),
+        },
+      }
+    }),
 
   // O store também protege o limite de carga e as restrições de criação:
   // adicionar item fora das regras não altera o rascunho (a UI já desabilita).

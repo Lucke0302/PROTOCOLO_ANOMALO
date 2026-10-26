@@ -53,6 +53,7 @@ export type EquipmentFormValues = {
 
 export type AnchorsFormValues = {
   anchors: Anchor[]
+  initialDisturbance: string
 }
 
 /**
@@ -390,9 +391,18 @@ export function createEquipmentSchema(
  * Etapa de âncoras: exatamente 3 campos nomeados, nenhum abaixo do mínimo e
  * somatório ESTRITAMENTE igual a PSIQUE + 20. O total é recalculado a cada
  * alteração de atributo e chega aqui já como valor final.
+ *
+ * Quando a Estabilidade Mental final fica abaixo do limite do módulo, a mesma
+ * etapa passa a exigir um distúrbio inicial (Cicatrizes da Mente).
  */
-export function createAnchorsSchema(rules: ModuleRules, totalPoints: number) {
+export function createAnchorsSchema(
+  rules: ModuleRules,
+  totalPoints: number,
+  sanity: number,
+) {
   const { count, minPerAnchor } = rules.anchorRules
+  const { sanityThreshold, options } = rules.disturbanceRules
+  const requiresDisturbance = sanity < sanityThreshold
 
   const anchorShape = z.object({
     id: z.string().min(1),
@@ -418,8 +428,20 @@ export function createAnchorsSchema(rules: ModuleRules, totalPoints: number) {
       anchors: z
         .array(anchorShape)
         .length(count, { message: `Informe exatamente ${count} âncoras.` }),
+      initialDisturbance: z.string(),
     })
     .superRefine((values, context) => {
+      if (
+        requiresDisturbance &&
+        !options.some((option) => option.id === values.initialDisturbance)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['initialDisturbance'],
+          message: `SAN ${sanity} abaixo de ${sanityThreshold}: escolha um distúrbio inicial.`,
+        })
+      }
+
       const total = getAnchorPointsTotal(values.anchors)
       if (total === totalPoints) return
 

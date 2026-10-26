@@ -80,6 +80,7 @@ export function createInitialDraft(rules: ModuleRules): CharacterDraft {
     generalSkills: [],
     freeSkillBonusPicks: [],
     anchors: createInitialAnchors(rules),
+    initialDisturbance: null,
     equipments: [],
   }
 }
@@ -973,9 +974,66 @@ export function getAnchorPointsTotal(anchors: readonly Anchor[]): number {
   return anchors.reduce((total, anchor) => total + anchor.points, 0)
 }
 
+// ---------------------------------------------------------------------------
+// Cicatrizes da Mente (distúrbio inicial)
+// ---------------------------------------------------------------------------
+
+/** Estabilidade Mental final do rascunho (derivado `sanidade`). */
+export function getFinalSanity(
+  draft: CharacterDraft,
+  rules: ModuleRules,
+): number {
+  return calculateDerivedStats(getFinalAttributes(draft, rules), rules).sanidade
+}
+
+/** Abaixo do limite do módulo o distúrbio inicial passa a ser obrigatório. */
+export function requiresInitialDisturbance(
+  draft: CharacterDraft,
+  rules: ModuleRules,
+): boolean {
+  return getFinalSanity(draft, rules) < rules.disturbanceRules.sanityThreshold
+}
+
+/** O valor informado existe no catálogo de distúrbios do módulo. */
+export function isValidInitialDisturbance(
+  value: string | null,
+  rules: ModuleRules,
+): boolean {
+  if (!value) return false
+  return rules.disturbanceRules.options.some((option) => option.id === value)
+}
+
+/**
+ * Distúrbio efetivo da ficha: descartado quando a SAN alcança o limite do
+ * módulo ou quando o valor guardado não pertence ao catálogo.
+ */
+export function getInitialDisturbance(
+  draft: CharacterDraft,
+  rules: ModuleRules,
+): string | null {
+  if (!requiresInitialDisturbance(draft, rules)) return null
+  return isValidInitialDisturbance(draft.initialDisturbance, rules)
+    ? draft.initialDisturbance
+    : null
+}
+
+/** Rótulo do distúrbio para a revisão/impressão da ficha. */
+export function getInitialDisturbanceLabel(
+  rules: ModuleRules,
+  disturbanceId: string | null,
+): string | null {
+  if (!disturbanceId) return null
+  return (
+    rules.disturbanceRules.options.find(
+      (option) => option.id === disturbanceId,
+    )?.label ?? null
+  )
+}
+
 /**
  * Etapa válida: exatamente 3 âncoras, nenhuma abaixo do mínimo e somatório
- * estritamente igual a PSIQUE + 20.
+ * estritamente igual a PSIQUE + 20. Com a SAN abaixo do limite do módulo, um
+ * distúrbio inicial também precisa estar selecionado.
  */
 export function isAnchorsComplete(
   draft: CharacterDraft,
@@ -984,6 +1042,12 @@ export function isAnchorsComplete(
   const { count, minPerAnchor } = rules.anchorRules
 
   if (draft.anchors.length !== count) return false
+  if (
+    requiresInitialDisturbance(draft, rules) &&
+    !isValidInitialDisturbance(draft.initialDisturbance, rules)
+  ) {
+    return false
+  }
   if (
     draft.anchors.some(
       (anchor) => !Number.isInteger(anchor.points) || anchor.points < minPerAnchor,
@@ -1283,6 +1347,7 @@ export function buildCharacterSheet(
     generalSkills: draft.generalSkills,
     freeSkillBonusPicks: draft.freeSkillBonusPicks,
     anchors: draft.anchors,
+    initialDisturbance: getInitialDisturbance(draft, rules),
     skillPool: getTotalSkillPool(draft.skills, rules, finalAttributes),
     anchorPool: getAnchorPool(finalAttributes, rules),
     equipments,

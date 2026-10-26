@@ -201,6 +201,24 @@ export interface EquipmentRules {
 }
 
 /** Ocupação atual de carga do personagem. */
+/** Distúrbio psicológico inicial (Cicatrizes da Mente). */
+export interface InitialDisturbanceDefinition {
+  id: string
+  label: string
+  description: string
+}
+
+export interface DisturbanceRules {
+  /**
+   * Limite de Estabilidade Mental (SAN): abaixo deste valor o personagem
+   * precisa registrar um distúrbio inicial. A partir dele, o campo é ocultado
+   * e qualquer valor guardado no rascunho é descartado.
+   */
+  sanityThreshold: number
+  /** Opções disponíveis no select de Cicatrizes da Mente. */
+  options: readonly InitialDisturbanceDefinition[]
+}
+
 export interface CarryCapacity {
   usedSlots: number
   baseSlots: number
@@ -340,6 +358,8 @@ export interface ModuleRules {
   generalSkills: readonly GeneralSkill[]
   generalSkillCategories: readonly GeneralSkillCategoryDefinition[]
   anchorRules: AnchorRules
+  /** Cicatrizes da Mente: distúrbio obrigatório quando a SAN fica abaixo do limite. */
+  disturbanceRules: DisturbanceRules
   /** Profissões contemporâneas do arquétipo Civil (vazio em módulos sem elas). */
   civilProfessions: readonly CivilProfession[]
   equipmentRules: EquipmentRules
@@ -377,6 +397,11 @@ export interface CharacterDraft {
   freeSkillBonusPicks: SkillId[]
   /** Âncoras pessoais com pontos distribuídos. */
   anchors: Anchor[]
+  /**
+   * Distúrbio inicial escolhido na etapa de Âncoras. Obrigatório apenas quando
+   * a SAN final fica abaixo de `disturbanceRules.sanityThreshold`.
+   */
+  initialDisturbance: string | null
   /** Itens escolhidos no catálogo de equipamentos do módulo. */
   equipments: Equipment[]
 }
@@ -407,6 +432,8 @@ export interface CharacterSheet {
   /** Perícias que receberam bônus de vaga livre (uma entrada por vaga). */
   freeSkillBonusPicks: SkillId[]
   anchors: Anchor[]
+  /** Distúrbio inicial registrado (null quando a SAN dispensa a escolha). */
+  initialDisturbance: string | null
   /** Pool efetivo de perícias (base + bônus de teto). */
   skillPool: number
   /** Total de pontos exigido pelas âncoras. */

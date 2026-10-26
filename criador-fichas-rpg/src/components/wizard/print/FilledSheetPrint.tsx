@@ -1,4 +1,9 @@
-import { getAnchorPointsTotal, getFreeSkillBonusTotal, getSkillBaseValues } from '../../../lib/characterRules'
+import {
+  getAnchorPointsTotal,
+  getFreeSkillBonusTotal,
+  getInitialDisturbanceLabel,
+  getSkillBaseValues,
+} from '../../../lib/characterRules'
 import type {
   AttributeKey,
   CharacterDraft,
@@ -39,6 +44,10 @@ export function FilledSheetPrint({
     ? (rules.skills.find((skill) => skill.id === sheet.professionSkillId)
         ?.label ?? sheet.professionSkillId)
     : null
+  const disturbanceLabel = getInitialDisturbanceLabel(
+    rules,
+    sheet.initialDisturbance,
+  )
 
   return (
     <div className="print-sheet hidden print:block print:text-[11px] print:leading-snug">
@@ -58,6 +67,11 @@ export function FilledSheetPrint({
                   ? ` · ${professionalSkillLabel} +${sheet.professionSkillBonus}`
                   : ''}
               </p>
+              {disturbanceLabel ? (
+                <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em]">
+                  Cicatrizes da Mente · {disturbanceLabel}
+                </p>
+              ) : null}
             </div>
             <div className="shrink-0 border border-black px-3 py-2 text-right font-mono text-[10px] uppercase leading-relaxed tracking-[0.08em]">
               <p>

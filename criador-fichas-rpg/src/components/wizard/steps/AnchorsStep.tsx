@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Anchor as AnchorIcon } from 'lucide-react'
+import { Brain, Anchor as AnchorIcon } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { getModule } from '../../../config/modules'
 import {
+  calculateDerivedStats,
   getAnchorPool,
   getFinalAttributes,
   getWizardSteps,
@@ -20,6 +21,9 @@ export function AnchorsStep() {
   const draft = useCharacterStore((state) => state.draft)
   const stepIndex = useCharacterStore((state) => state.stepIndex)
   const setAnchors = useCharacterStore((state) => state.setAnchors)
+  const setInitialDisturbance = useCharacterStore(
+    (state) => state.setInitialDisturbance,
+  )
   const nextStep = useCharacterStore((state) => state.nextStep)
   const previousStep = useCharacterStore((state) => state.previousStep)
 
@@ -29,6 +33,11 @@ export function AnchorsStep() {
   const finalAttributes = getFinalAttributes(draft, rules)
   const anchorPool = getAnchorPool(finalAttributes, rules)
   const psique = finalAttributes[rules.anchorRules.attribute]
+  // Cicatrizes da Mente: a SAN final é igual à PSIQUE final (derivado).
+  const sanity = calculateDerivedStats(finalAttributes, rules).sanidade
+  const { sanityThreshold, options: disturbanceOptions } =
+    rules.disturbanceRules
+  const requiresDisturbance = sanity < sanityThreshold
   const anchorAttributeLabel =
     rules.attributes.find(
       (attribute) => attribute.key === rules.anchorRules.attribute,
@@ -40,13 +49,18 @@ export function AnchorsStep() {
     handleSubmit,
     formState: { errors, isValid },
   } = useForm<AnchorsFormValues>({
-    resolver: zodResolver(createAnchorsSchema(rules, anchorPool)),
-    defaultValues: { anchors: draft.anchors },
+    resolver: zodResolver(createAnchorsSchema(rules, anchorPool, sanity)),
+    defaultValues: {
+      anchors: draft.anchors,
+      initialDisturbance: draft.initialDisturbance ?? '',
+    },
     mode: 'onChange',
   })
 
   const values = useWatch({ control }) as AnchorsFormValues
   const anchors = (values.anchors ?? draft.anchors) as Anchor[]
+  const disturbanceValue = values.initialDisturbance ?? ''
+  const disturbanceError = errors.initialDisturbance?.message
   // Campos numéricos vazios chegam como NaN: o resumo trata como 0 e o Zod
   // bloqueia o avanço com a mensagem específica do campo.
   const totalPoints = anchors.reduce(
@@ -64,6 +78,9 @@ export function AnchorsStep() {
     (errors.anchors as { message?: string } | undefined)?.message
 
   const onSubmit = handleSubmit((formValues) => {
+    setInitialDisturbance(
+      requiresDisturbance ? formValues.initialDisturbance : null,
+    )
     setAnchors(formValues.anchors)
     nextStep()
   })
@@ -139,6 +156,72 @@ export function AnchorsStep() {
           >
             {poolError}
           </p>
+        ) : null}
+
+        {requiresDisturbance ? (
+          <section aria-labelledby="disturbance-title" className="panel p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3
+                  id="disturbance-title"
+                  className="flex items-center gap-2 text-sm font-semibold"
+                >
+                  <Brain className="h-4 w-4" aria-hidden="true" />
+                  Cicatrizes da Mente
+                </h3>
+                <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-gray-500">
+                  Estabilidade Mental final {sanity}, abaixo do limite de{' '}
+                  {sanityThreshold}. Escolha o distúrbio que acompanha o
+                  personagem desde a primeira cena.
+                </p>
+              </div>
+              <span className="shrink-0 border border-navy-blue bg-navy-blue-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-navy-blue">
+                obrigatório
+              </span>
+            </div>
+
+            <label htmlFor="initial-disturbance" className="label-micro">
+              Distúrbio inicial
+            </label>
+            <select
+              id="initial-disturbance"
+              aria-invalid={disturbanceError ? true : undefined}
+              aria-describedby={
+                disturbanceError
+                  ? 'initial-disturbance-error'
+                  : 'initial-disturbance-hint'
+              }
+              className="mt-1.5 w-full border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none transition-colors focus:border-navy-blue focus:ring-1 focus:ring-navy-blue"
+              {...register('initialDisturbance')}
+            >
+              <option value="">Selecione um distúrbio</option>
+              {disturbanceOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <p
+              id="initial-disturbance-hint"
+              className="mt-2 text-[11px] leading-relaxed text-gray-500"
+            >
+              {disturbanceOptions.find(
+                (option) => option.id === disturbanceValue,
+              )?.description ??
+                'O distúrbio orienta a interpretação e as reações sob pressão.'}
+            </p>
+
+            {disturbanceError ? (
+              <p
+                id="initial-disturbance-error"
+                role="alert"
+                className="mt-1.5 text-[11px] text-navy-blue"
+              >
+                {disturbanceError}
+              </p>
+            ) : null}
+          </section>
         ) : null}
 
         <section aria-labelledby="anchors-list-title">
@@ -276,6 +359,9 @@ export function AnchorsStep() {
             caracteres) e garanta o somatório exato de {anchorPool} pontos (
             {anchorAttributeLabel} {psique} + {basePoints}), com no mínimo{' '}
             {minPerAnchor} por âncora.
+            {requiresDisturbance
+              ? ` A SAN ${sanity} exige também um distúrbio inicial (Cicatrizes da Mente).`
+              : ''}
           </p>
         ) : null}
 
@@ -284,11 +370,13 @@ export function AnchorsStep() {
           nextLabel="Avançar para equipamentos"
           nextDisabled={!isValid}
           hint={
-            remainingPoints === 0
-              ? `Somatório exato de ${anchorPool} pontos. Avance para os equipamentos.`
-              : remainingPoints > 0
-                ? `Faltam ${remainingPoints} ponto(s) para atingir ${anchorPool} (${anchorAttributeLabel} ${psique} + ${basePoints}).`
-                : `Excedeu o total em ${Math.abs(remainingPoints)} ponto(s). Reduza antes de avançar.`
+            requiresDisturbance && disturbanceValue === ''
+              ? `SAN ${sanity} abaixo de ${sanityThreshold}: selecione uma Cicatriz da Mente.`
+              : remainingPoints === 0
+                ? `Somatório exato de ${anchorPool} pontos. Avance para os equipamentos.`
+                : remainingPoints > 0
+                  ? `Faltam ${remainingPoints} ponto(s) para atingir ${anchorPool} (${anchorAttributeLabel} ${psique} + ${basePoints}).`
+                  : `Excedeu o total em ${Math.abs(remainingPoints)} ponto(s). Reduza antes de avançar.`
           }
         />
       </form>

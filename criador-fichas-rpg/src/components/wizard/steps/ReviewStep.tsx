@@ -13,6 +13,7 @@ import {
   getAnchorPointsTotal,
   getFreeSkillBonuses,
   getFreeSkillBonusTotal,
+  getInitialDisturbanceLabel,
   getProfessionRequirementStatus,
   getSkillBaseValues,
   getTotalAttributeBonus,
@@ -49,6 +50,15 @@ export function ReviewStep() {
   const rules = getModule(draft.moduleId)
   const step = getWizardSteps(draft, rules)[stepIndex]
   const sheet = buildCharacterSheet(draft, rules)
+  const disturbanceLabel = getInitialDisturbanceLabel(
+    rules,
+    sheet.initialDisturbance,
+  )
+  const disturbanceDescription = sheet.initialDisturbance
+    ? (rules.disturbanceRules.options.find(
+        (option) => option.id === sheet.initialDisturbance,
+      )?.description ?? null)
+    : null
   const baseSkillValues = getSkillBaseValues(rules, sheet.attributes)
   const freeSkillBonuses = getFreeSkillBonuses(sheet.freeSkillBonusPicks, rules)
 
@@ -278,6 +288,36 @@ export function ReviewStep() {
           anchorPool={sheet.anchorPool}
         />
       </section>
+
+      {disturbanceLabel ? (
+        <section className="mt-6" aria-labelledby="disturbance-review-title">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h3
+              id="disturbance-review-title"
+              className="text-sm font-semibold"
+            >
+              Cicatrizes da Mente
+            </h3>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-gray-400">
+              distúrbio inicial
+            </span>
+          </div>
+          <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">{disturbanceLabel}</p>
+              {disturbanceDescription ? (
+                <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-gray-500">
+                  {disturbanceDescription}
+                </p>
+              ) : null}
+            </div>
+            <p className="shrink-0 border border-navy-blue bg-navy-blue-50 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-navy-blue">
+              SAN {sheet.derived.sanidade} · abaixo de{' '}
+              {rules.disturbanceRules.sanityThreshold}
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <div className="mb-3 flex items-baseline justify-between gap-3">
